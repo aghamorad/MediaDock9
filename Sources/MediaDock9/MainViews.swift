@@ -27,6 +27,10 @@ struct DownloadView: View {
                     destinationPanel(for: source)
                 }
 
+                if let result = model.albumMergeService.lastResult {
+                    albumResultPanel(result)
+                }
+
                 RetroPanel(title: "Exact command preview") {
                     Text(model.commandPreview)
                         .font(.system(size: 11, design: .monospaced))
@@ -173,7 +177,50 @@ struct DownloadView: View {
                         .buttonStyle(RetroButtonStyle())
                 }
             }
+
+            if model.isAlbumDownload {
+                ThinRule()
+                Toggle("One Track, One Album", isOn: $model.oneTrackOneAlbum)
+                    .toggleStyle(.checkbox)
+                Text("Merge all tracks in this album into one continuous audio file.")
+                    .font(.retro(10))
+                    .foregroundStyle(RetroPalette.ink.opacity(0.68))
+                if model.oneTrackOneAlbum {
+                    Toggle("Keep individual tracks", isOn: $model.keepIndividualTracks)
+                        .toggleStyle(.checkbox)
+                }
+            }
         }
+    }
+
+    private func albumResultPanel(_ result: AlbumMergeResult) -> some View {
+        RetroPanel(title: result.success ? "One Track, One Album complete" : "Album downloaded") {
+            if result.success {
+                Text("Downloaded and merged")
+                    .font(.retro(13, weight: .bold))
+                if let outputPath = result.outputPath {
+                    Text(URL(fileURLWithPath: outputPath).deletingPathExtension().lastPathComponent)
+                        .font(.retro(11))
+                }
+                Text("\(result.trackCount) tracks · \(durationLabel(result.outputDuration ?? result.sourceDuration))")
+                    .font(.system(size: 11, design: .monospaced))
+            } else {
+                Text("One Track, One Album failed")
+                    .font(.retro(13, weight: .bold))
+                    .foregroundStyle(RetroPalette.red)
+                if let error = result.error { Text(error).font(.retro(10)) }
+                HStack {
+                    Button("Retry") { model.retryAlbumMerge() }.buttonStyle(RetroButtonStyle(prominent: true))
+                    Button("Open Folder") { model.revealAlbumFolder() }.buttonStyle(RetroButtonStyle())
+                }
+            }
+        }
+    }
+
+    private func durationLabel(_ duration: TimeInterval?) -> String {
+        guard let duration else { return "duration unavailable" }
+        let total = Int(duration.rounded())
+        return String(format: "%02d:%02d:%02d", total / 3600, (total / 60) % 60, total % 60)
     }
 
     private func destinationPanel(for source: MediaSource) -> some View {
@@ -200,6 +247,36 @@ struct DownloadView: View {
     private var detectionColor: Color {
         if model.sourceChoice != .automatic { return RetroPalette.ink.opacity(0.72) }
         return MediaSource.detect(from: model.urlText) == nil && !model.urlText.isEmpty ? RetroPalette.red : RetroPalette.ink.opacity(0.72)
+    }
+}
+
+struct MusicView: View {
+    @EnvironmentObject private var model: AppModel
+
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 12) {
+                RetroPanel(title: "Music settings") {
+                    Text("Album downloads")
+                        .font(.retro(13, weight: .bold))
+                    Picker("Album downloads", selection: Binding(
+                        get: { model.albumDownloadPreference },
+                        set: { model.albumDownloadPreference = $0 }
+                    )) {
+                        ForEach(AlbumDownloadPreference.allCases) { preference in
+                            Text(preference.label).tag(preference)
+                        }
+                    }
+                    .pickerStyle(.radioGroup)
+                    .labelsHidden()
+                    Text("These settings are also used by the album controls on the Download screen. Single-song downloads are unaffected.")
+                        .font(.retro(10))
+                        .foregroundStyle(RetroPalette.ink.opacity(0.68))
+                }
+            }
+            .padding(14)
+        }
+        .background(RetroPalette.desktop)
     }
 }
 

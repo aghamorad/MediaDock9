@@ -64,6 +64,12 @@ final class AppModel: ObservableObject {
     @Published var appleMusicFolder: String {
         didSet { defaults.set(appleMusicFolder, forKey: Keys.appleMusicFolder) }
     }
+    @Published var oneTrackOneAlbum: Bool {
+        didSet { defaults.set(oneTrackOneAlbum, forKey: Keys.oneTrackOneAlbum) }
+    }
+    @Published var keepIndividualTracks: Bool {
+        didSet { defaults.set(keepIndividualTracks, forKey: Keys.keepIndividualTracks) }
+    }
 
     @Published private(set) var dependencies: [DependencyStatus] = []
     @Published private(set) var isScanning = false
@@ -73,8 +79,13 @@ final class AppModel: ObservableObject {
     @Published var alertMessage: String?
 
     let runner = CommandRunner()
+    let albumMergeService = AlbumMergeService()
     private let defaults: UserDefaults
     private var runnerObservation: AnyCancellable?
+    private var albumMergeObservation: AnyCancellable?
+    private var pendingAlbumRoot: URL?
+    private var pendingAlbumBeforePaths: Set<String> = []
+    private(set) var lastAlbumMergeRequest: AlbumMergeRequest?
 
     private enum Keys {
         static let sourceChoice = "sourceChoice"
@@ -96,6 +107,8 @@ final class AppModel: ObservableObject {
         static let youtubeFolder = "youtubeFolder"
         static let spotifyFolder = "spotifyFolder"
         static let appleMusicFolder = "appleMusicFolder"
+        static let oneTrackOneAlbum = "oneTrackOneAlbum"
+        static let keepIndividualTracks = "keepIndividualTracks"
     }
 
     init(defaults: UserDefaults = .standard) {
@@ -120,13 +133,22 @@ final class AppModel: ObservableObject {
         youtubeFolder = defaults.string(forKey: Keys.youtubeFolder) ?? "\(downloads)/YouTube"
         spotifyFolder = defaults.string(forKey: Keys.spotifyFolder) ?? "\(downloads)/Spotify"
         appleMusicFolder = defaults.string(forKey: Keys.appleMusicFolder) ?? "\(downloads)/AppleMusic"
+        oneTrackOneAlbum = defaults.object(forKey: Keys.oneTrackOneAlbum) as? Bool ?? false
+        keepIndividualTracks = defaults.object(forKey: Keys.keepIndividualTracks) as? Bool ?? true
 
         // CommandRunner owns the live process state. Forward its changes so every
         // view observing AppModel redraws while commands and log output arrive.
         runnerObservation = runner.objectWillChange.sink { [weak self] _ in
             self?.objectWillChange.send()
         }
-        runner.onBatchFinished = { [weak self] _ in self?.refreshDependencies() }
+        albumMergeObservation = albumMergeService.objectWillChange.sink { [weak self] _ in
+            self?.objectWillChange.send()
+        }
+        runner.onBatchFinished = { [weak self] success in
+            self?.refreshDependencies()
+            if success { self?.beginAlbumPostProcessingIfNeeded() }
+            else { self?.pendingAlbumRoot = nil; self?.pendingAlbumBeforePaths = [] }
+        }
     }
 
     var effectiveSource: MediaSource? {
@@ -151,8 +173,38 @@ final class AppModel: ObservableObject {
     }
 
     var canStartDownload: Bool {
-        !runner.isRunning && effectiveSource != nil && !urlText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        !runner.isRunning && !albumMergeService.isRunning && effectiveSource != nil && !urlText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
+
+    var albumDownloadPreference: AlbumDownloadPreference {
+        get {
+            if !oneTrackOneAlbum { return .individualTracks }
+            return keepIndividualTracks ? .oneTrackOneAlbumKeepingTracks : .oneTrackOneAlbum
+        }
+        set {
+            switch newValue {
+            case .individualTracks: oneTrackOneAlbum = false
+            case .oneTrackOneAlbum: oneTrackOneAlbum = true; keepIndividualTracks = false
+            case .oneTrackOneAlbumKeepingTracks: oneTrackOneAlbum = true; keepIndividualTracks = true
+            }
+        }
+    }
+
+    var isAlbumDownload: Bool {
+        guard playlistMode, let source = effectiveSource,
+              let url = URL(string: urlText.trimmingCharacters(in: .whitespacesAndNewlines)) else { return false }
+        if source == .youtube && mediaKind != .audio { return false }
+        let path = url.path.lowercased()
+        switch source {
+        case .youtube: return url.query?.split(separator: "&").contains(where: { $0.hasPrefix("list=") }) == true
+        case .spotify: return path.contains("/album/") || path.contains("/playlist/")
+        case .appleMusic: return path.contains("/album/")
+        }
+    }
+
+    var activityItem: String { albumMergeService.isRunning ? albumMergeService.currentItem : runner.currentItem }
+    var activityProgress: Double? { albumMergeService.isRunning ? albumMergeService.progress : runner.progress }
+    var isBusy: Bool { runner.isRunning || albumMergeService.isRunning }
 
     func dependency(_ id: DependencyID) -> DependencyStatus? {
         dependencies.first(where: { $0.id == id })
@@ -181,11 +233,66 @@ final class AppModel: ObservableObject {
                 throw AppIssue.message("MediaDock 9 cannot identify this link. Choose YouTube, Spotify, or Apple Music explicitly.")
             }
             let command = try makeDownloadCommand(requireInstalledTool: true)
-            _ = try DownloadDirectory.prepare(at: URL(fileURLWithPath: outputFolder(for: source), isDirectory: true))
+            let root = URL(fileURLWithPath: outputFolder(for: source), isDirectory: true)
+            _ = try DownloadDirectory.prepare(at: root)
+            albumMergeService.resetResult()
+            if isAlbumDownload && oneTrackOneAlbum {
+                pendingAlbumRoot = root
+                pendingAlbumBeforePaths = Set(AlbumMergeService.discoverAudioTracks(in: root).map(\.standardizedFileURL.path))
+            } else {
+                pendingAlbumRoot = nil
+                pendingAlbumBeforePaths = []
+            }
             runner.run([command])
         } catch {
             alertMessage = error.localizedDescription
         }
+    }
+
+    func stopCurrentWork() {
+        if albumMergeService.isRunning { albumMergeService.cancel() } else { runner.stop() }
+    }
+
+    func retryAlbumMerge() {
+        guard let request = lastAlbumMergeRequest else {
+            alertMessage = "There is no completed album download available to merge again."
+            return
+        }
+        albumMergeService.mergeAlbum(request) { [weak self] result in
+            self?.lastAlbumMergeRequest = result.success ? request : request
+        }
+    }
+
+    func revealAlbumFolder() {
+        guard let path = lastAlbumMergeRequest?.albumDirectory.path else { return }
+        NSWorkspace.shared.open(URL(fileURLWithPath: path))
+    }
+
+    private func beginAlbumPostProcessingIfNeeded() {
+        guard let root = pendingAlbumRoot else { return }
+        pendingAlbumRoot = nil
+        let ffmpeg = dependency(.ffmpeg)?.path ?? RuntimeEnvironment.locate("ffmpeg")
+        let ffprobe: String? = {
+            if let ffmpeg {
+                let sibling = URL(fileURLWithPath: ffmpeg).deletingLastPathComponent().appendingPathComponent("ffprobe").path
+                if FileManager.default.isExecutableFile(atPath: sibling) { return sibling }
+            }
+            return RuntimeEnvironment.locate("ffprobe")
+        }()
+        guard let ffmpeg, let ffprobe else {
+            runner.record("[OneTrackOneAlbum] FFmpeg and FFprobe are required for album merging.", kind: .error)
+            albumMergeService.recordFailure("FFmpeg and FFprobe are required for One Track, One Album.")
+            return
+        }
+        guard let directory = AlbumMergeService.resolveAlbumDirectory(in: root, beforePaths: pendingAlbumBeforePaths) else {
+            runner.record("[OneTrackOneAlbum] Could not resolve the downloaded album folder.", kind: .error)
+            albumMergeService.recordFailure("Could not resolve the downloaded album folder.")
+            return
+        }
+        let request = AlbumMergeRequest(albumDirectory: directory, artist: nil, album: nil, keepIndividualTracks: keepIndividualTracks, ffmpegPath: ffmpeg, ffprobePath: ffprobe, artworkURL: nil, releaseYear: nil)
+        lastAlbumMergeRequest = request
+        albumMergeService.log = { [weak self] text, kind in self?.runner.record(text, kind: kind) }
+        albumMergeService.mergeAlbum(request)
     }
 
     func requestInstall(_ dependencyID: DependencyID) {

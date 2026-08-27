@@ -4,7 +4,7 @@ I was playing around with Codex and decided to make this simpler for anyone who 
 
 MediaDock 9 is a native macOS front end for `yt-dlp`, `spotdl`, `gamdl`, FFmpeg, Deno, pipx, and Homebrew. It puts those existing command-line tools behind a graphical interface without reimplementing their download or account logic.
 
-The activity console follows the command runner live: running/idle status, current item, progress, controls, and tool output update as the underlying downloader emits them.
+The activity console follows the command runner live: running/idle status, current item, progress, controls, and tool output update as the underlying downloader emits them. Music album downloads can optionally run the provider-independent **One Track, One Album** post-processing stage.
 
 Before launching a downloader, MediaDock creates the selected destination if needed and verifies that it is writable. This also ensures Gamdl can initialize its optional SQLite download database before media processing begins.
 
@@ -79,7 +79,8 @@ The build script keeps compiler caches in the project. It also recognizes the sp
 | `CommandRuntime.swift` | executable search path, version scans, process execution, streaming logs, progress, cancellation |
 | `Models.swift` | source/format/dependency models and safe shell-display quoting |
 | `RootView.swift` | window shell, sidebar, command-review sheet, permanent activity console |
-| `MainViews.swift` | Download, Setup, Cookies, and Troubleshooting screens |
+| `MainViews.swift` | Download, Music, Setup, Cookies, and Troubleshooting screens |
+| `AlbumMergeService.swift` | Ordered track discovery, FFmpeg merge/fallback, FFprobe verification, cancellation, and safe cleanup |
 | `RetroTheme.swift` | sparse platinum-gray controls, inset/raised borders, status lights, typography |
 | `SelfCheck.swift` | isolated checks for URL detection, quoting, and all three command builders |
 
@@ -182,6 +183,10 @@ When enabled, MediaDock passes the selected browser name to yt-dlp’s `--cookie
 ### Apple Music
 
 Gamdl currently requires an active Apple Music subscription and a Netscape/Mozilla-format browser cookie export in its ordinary cookie-based mode. MediaDock stores only the selected file path in `UserDefaults`.
+
+### One Track, One Album
+
+For audio album downloads, enable **One Track, One Album** on the Download screen or choose the persistent setting under Music. MediaDock resolves track order from disc/track metadata, falls back to natural filenames, writes an absolute-path FFmpeg concat manifest in the system temporary directory, and tries stream copy before AAC 256 kbps. FFprobe compares the merged duration with the source total. Individual tracks are deleted only after verification when **Keep individual tracks** is off; a failed merge leaves the completed album and its source tracks available for retry.
 
 MediaDock does not:
 

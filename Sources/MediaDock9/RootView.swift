@@ -15,6 +15,7 @@ struct RootView: View {
                 Group {
                     switch model.section {
                     case .download: DownloadView()
+                    case .music: MusicView()
                     case .setup: SetupView()
                     case .cookies: CookiesView()
                     case .troubleshooting: TroubleshootingView()
@@ -91,8 +92,8 @@ private struct Sidebar: View {
             Spacer()
             VStack(alignment: .leading, spacing: 5) {
                 HStack(spacing: 7) {
-                    StatusLight(color: model.runner.isRunning ? RetroPalette.cyan : RetroPalette.green)
-                    Text(model.runner.isRunning ? "WORKING" : "READY")
+                    StatusLight(color: model.isBusy ? RetroPalette.cyan : RetroPalette.green)
+                    Text(model.isBusy ? "WORKING" : "READY")
                         .font(.system(size: 9, weight: .bold, design: .monospaced))
                 }
                 Text("Commands stay visible.\nNothing installs silently.")
@@ -134,6 +135,7 @@ private struct TitleBar: View {
     private var subtitle: String {
         switch model.section {
         case .download: return "One link in; a visible command out."
+        case .music: return "Choose what album downloads should produce."
         case .setup: return "Detect, install, and update the tools MediaDock orchestrates."
         case .cookies: return "Account access stays in your browser or in a file you choose."
         case .troubleshooting: return "Start with versions, then isolate account and network failures."
@@ -148,12 +150,12 @@ private struct ActivityConsole: View {
         VStack(spacing: 0) {
             HStack(spacing: 10) {
                 StatusLight(color: lightColor)
-                Text(model.runner.currentItem)
+                Text(model.activityItem)
                     .font(.system(size: 10, weight: .semibold, design: .monospaced))
                     .lineLimit(1)
                 Spacer()
-                if model.runner.isRunning {
-                    Button("Stop") { model.runner.stop() }
+                if model.isBusy {
+                    Button("Stop") { model.stopCurrentWork() }
                         .buttonStyle(RetroButtonStyle())
                 }
                 Button("Copy command") { model.copy(model.runner.activeCommand) }
@@ -168,7 +170,7 @@ private struct ActivityConsole: View {
             .frame(height: 38)
             .background(RetroPalette.chrome)
 
-            if let progress = model.runner.progress {
+            if let progress = model.activityProgress {
                 GeometryReader { geometry in
                     ZStack(alignment: .leading) {
                         Rectangle().fill(RetroPalette.field)
@@ -186,7 +188,8 @@ private struct ActivityConsole: View {
     }
 
     private var lightColor: Color {
-        if model.runner.isRunning { return RetroPalette.cyan }
+        if model.isBusy { return RetroPalette.cyan }
+        if model.albumMergeService.stage == .failed { return RetroPalette.red }
         if let code = model.runner.lastExitCode, code != 0 { return RetroPalette.red }
         return RetroPalette.green
     }

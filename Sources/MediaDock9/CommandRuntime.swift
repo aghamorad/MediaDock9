@@ -162,6 +162,10 @@ final class CommandRunner: ObservableObject {
         lastExitCode = nil
     }
 
+    func record(_ text: String, kind: LogKind = .info) {
+        append(text, kind: kind)
+    }
+
     var plainTextLog: String {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"

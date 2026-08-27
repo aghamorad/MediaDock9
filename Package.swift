@@ -11,6 +11,11 @@ let package = Package(
         .executableTarget(
             name: "MediaDock9",
             path: "Sources/MediaDock9"
+        ),
+        .testTarget(
+            name: "MediaDock9Tests",
+            dependencies: ["MediaDock9"],
+            path: "Tests/MediaDock9Tests"
         )
     ],
     swiftLanguageModes: [.v5]

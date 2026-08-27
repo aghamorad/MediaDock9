@@ -2,6 +2,7 @@ import Foundation
 
 enum AppSection: String, CaseIterable, Identifiable {
     case download = "Download"
+    case music = "Music"
     case setup = "Setup"
     case cookies = "Cookies"
     case troubleshooting = "Troubleshooting"
@@ -11,11 +12,39 @@ enum AppSection: String, CaseIterable, Identifiable {
     var symbol: String {
         switch self {
         case .download: return "arrow.down.to.line"
+        case .music: return "music.note.list"
         case .setup: return "wrench.and.screwdriver"
         case .cookies: return "key"
         case .troubleshooting: return "lifepreserver"
         }
     }
+}
+
+enum AlbumDownloadPreference: String, CaseIterable, Identifiable {
+    case individualTracks
+    case oneTrackOneAlbum
+    case oneTrackOneAlbumKeepingTracks
+
+    var id: String { rawValue }
+    var label: String {
+        switch self {
+        case .individualTracks: return "Individual tracks"
+        case .oneTrackOneAlbum: return "One Track, One Album"
+        case .oneTrackOneAlbumKeepingTracks: return "One Track, One Album + keep individual tracks"
+        }
+    }
+}
+
+struct AlbumMergeResult {
+    let success: Bool
+    let outputPath: String?
+    let usedStreamCopy: Bool
+    let usedFallbackEncoding: Bool
+    let sourceDuration: TimeInterval?
+    let outputDuration: TimeInterval?
+    let trackCount: Int
+    let error: String?
+    let cancelled: Bool
 }
 
 enum MediaSource: String, CaseIterable, Identifiable {
