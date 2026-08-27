@@ -263,6 +263,7 @@ final class AppModel: ObservableObject {
             let command = try makeDownloadCommand(requireInstalledTool: true)
             let root = URL(fileURLWithPath: outputFolder(for: source), isDirectory: true)
             _ = try DownloadDirectory.prepare(at: root)
+            try prepareDownloadSupportFiles(for: source, root: root)
             albumMergeService.resetResult()
             if isAlbumDownload && oneTrackOneAlbum {
                 pendingAlbumRoot = root
@@ -275,6 +276,17 @@ final class AppModel: ObservableObject {
         } catch {
             alertMessage = error.localizedDescription
         }
+    }
+
+    private func prepareDownloadSupportFiles(for source: MediaSource, root: URL) throws {
+        guard useArchive else { return }
+        let filename: String
+        switch source {
+        case .youtube: filename = "archive.txt"
+        case .spotify: filename = "archive.spotdl.txt"
+        case .appleMusic: filename = "MediaDock9-downloads.sqlite"
+        }
+        _ = try DownloadDirectory.ensureFile(at: root.appendingPathComponent(filename))
     }
 
     func extractAppleCookiesFromBrowser() {

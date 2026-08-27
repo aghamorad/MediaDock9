@@ -51,6 +51,43 @@ enum DownloadDirectory {
         return directory
     }
 
+    static func ensureFile(
+        at fileURL: URL,
+        fileManager: FileManager = .default
+    ) throws -> URL {
+        let fileURL = fileURL.standardizedFileURL
+        var isDirectory: ObjCBool = false
+        if fileManager.fileExists(atPath: fileURL.path, isDirectory: &isDirectory) {
+            guard !isDirectory.boolValue else {
+                throw AppIssue.message(
+                    "MediaDock 9 expected a file at (fileURL.path), but a folder is there. Move that folder and try again."
+                )
+            }
+            guard fileManager.isWritableFile(atPath: fileURL.path) else {
+                throw AppIssue.message(
+                    "MediaDock 9 found (fileURL.lastPathComponent), but it is not writable. Check its permissions or choose a different download folder."
+                )
+            }
+            return fileURL
+        }
+
+        do {
+            guard fileManager.createFile(
+                atPath: fileURL.path,
+                contents: nil,
+                attributes: [.posixPermissions: 0o600]
+            ) else {
+                throw CocoaError(.fileWriteUnknown)
+            }
+        } catch {
+            throw AppIssue.message(
+                "MediaDock 9 could not recreate (fileURL.lastPathComponent) at (fileURL.path): (error.localizedDescription)"
+            )
+        }
+
+        return fileURL
+    }
+
     private static func issue(at directory: URL, detail: String) -> AppIssue {
         AppIssue.message(
             "MediaDock 9 could not prepare the download folder at \(directory.path). " +

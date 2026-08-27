@@ -27,6 +27,27 @@ final class AlbumMergeServiceTests: XCTestCase {
         XCTAssertTrue(CookieImportStore.isManagedPath(CookieImportStore.appleMusicCookieURL.path))
     }
 
+    func testMissingDownloadSupportFileIsRecreatedWithoutOverwritingExistingFile() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let archive = directory.appendingPathComponent("MediaDock9-downloads.sqlite")
+
+        _ = try DownloadDirectory.ensureFile(at: archive)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: archive.path))
+        try Data("existing archive state".utf8).write(to: archive)
+        _ = try DownloadDirectory.ensureFile(at: archive)
+        XCTAssertEqual(try Data(contentsOf: archive), Data("existing archive state".utf8))
+    }
+
+    func testDownloadSupportFileRejectsFolderCollision() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory.appendingPathComponent("archive.txt"), withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        XCTAssertThrowsError(try DownloadDirectory.ensureFile(at: directory.appendingPathComponent("archive.txt")))
+    }
+
     func testBrowserSpecifierUsesDetectedChromiumProfile() throws {
         let home = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let profile = home.appendingPathComponent("Library/Application Support/Google/Chrome/Profile 1/Network", isDirectory: true)
