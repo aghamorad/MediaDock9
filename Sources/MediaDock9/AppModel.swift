@@ -52,9 +52,16 @@ final class AppModel: ObservableObject {
     @Published var browserChoice: BrowserChoice {
         didSet { defaults.set(browserChoice.rawValue, forKey: Keys.browserChoice) }
     }
-    @Published var appleCookiesPath: String {
-        didSet { defaults.set(appleCookiesPath, forKey: Keys.appleCookiesPath) }
+    @Published var appleCookieBrowser: BrowserChoice {
+        didSet { defaults.set(appleCookieBrowser.rawValue, forKey: Keys.appleCookieBrowser) }
     }
+    @Published var appleCookiesPath: String {
+        didSet {
+            defaults.set(appleCookiesPath, forKey: Keys.appleCookiesPath)
+            appleCookiesManaged = CookieImportStore.isManagedPath(appleCookiesPath)
+        }
+    }
+    @Published private(set) var appleCookiesManaged = false
     @Published var youtubeFolder: String {
         didSet { defaults.set(youtubeFolder, forKey: Keys.youtubeFolder) }
     }
@@ -63,6 +70,18 @@ final class AppModel: ObservableObject {
     }
     @Published var appleMusicFolder: String {
         didSet { defaults.set(appleMusicFolder, forKey: Keys.appleMusicFolder) }
+    }
+    @Published var oneTrackOneAlbum: Bool {
+        didSet { defaults.set(oneTrackOneAlbum, forKey: Keys.oneTrackOneAlbum) }
+    }
+    @Published var keepIndividualTracks: Bool {
+        didSet { defaults.set(keepIndividualTracks, forKey: Keys.keepIndividualTracks) }
+    }
+    @Published var selectedTheme: MediaDockTheme {
+        didSet {
+            defaults.set(selectedTheme.rawValue, forKey: Keys.selectedTheme)
+            RetroPalette.theme = selectedTheme
+        }
     }
 
     @Published private(set) var dependencies: [DependencyStatus] = []
@@ -73,8 +92,14 @@ final class AppModel: ObservableObject {
     @Published var alertMessage: String?
 
     let runner = CommandRunner()
+    let albumMergeService = AlbumMergeService()
     private let defaults: UserDefaults
     private var runnerObservation: AnyCancellable?
+    private var albumMergeObservation: AnyCancellable?
+    private var pendingAlbumRoot: URL?
+    private var pendingAlbumBeforePaths: Set<String> = []
+    private var pendingCookieExtractionURL: URL?
+    private(set) var lastAlbumMergeRequest: AlbumMergeRequest?
 
     private enum Keys {
         static let sourceChoice = "sourceChoice"
@@ -92,10 +117,14 @@ final class AppModel: ObservableObject {
         static let subtitleLanguages = "subtitleLanguages"
         static let useYouTubeCookies = "useYouTubeCookies"
         static let browserChoice = "browserChoice"
+        static let appleCookieBrowser = "appleCookieBrowser"
         static let appleCookiesPath = "appleCookiesPath"
         static let youtubeFolder = "youtubeFolder"
         static let spotifyFolder = "spotifyFolder"
         static let appleMusicFolder = "appleMusicFolder"
+        static let oneTrackOneAlbum = "oneTrackOneAlbum"
+        static let keepIndividualTracks = "keepIndividualTracks"
+        static let selectedTheme = "selectedTheme"
     }
 
     init(defaults: UserDefaults = .standard) {
@@ -116,17 +145,36 @@ final class AppModel: ObservableObject {
         subtitleLanguages = defaults.string(forKey: Keys.subtitleLanguages) ?? "en.*,en"
         useYouTubeCookies = defaults.object(forKey: Keys.useYouTubeCookies) as? Bool ?? false
         browserChoice = BrowserChoice(rawValue: defaults.string(forKey: Keys.browserChoice) ?? "") ?? .safari
-        appleCookiesPath = defaults.string(forKey: Keys.appleCookiesPath) ?? ""
+        appleCookieBrowser = BrowserChoice(rawValue: defaults.string(forKey: Keys.appleCookieBrowser) ?? "") ?? .chrome
+        let savedAppleCookiesPath = defaults.string(forKey: Keys.appleCookiesPath) ?? ""
+        appleCookiesPath = savedAppleCookiesPath
         youtubeFolder = defaults.string(forKey: Keys.youtubeFolder) ?? "\(downloads)/YouTube"
         spotifyFolder = defaults.string(forKey: Keys.spotifyFolder) ?? "\(downloads)/Spotify"
         appleMusicFolder = defaults.string(forKey: Keys.appleMusicFolder) ?? "\(downloads)/AppleMusic"
+        oneTrackOneAlbum = defaults.object(forKey: Keys.oneTrackOneAlbum) as? Bool ?? false
+        keepIndividualTracks = defaults.object(forKey: Keys.keepIndividualTracks) as? Bool ?? true
+        let savedTheme = MediaDockTheme(rawValue: defaults.string(forKey: Keys.selectedTheme) ?? "") ?? .platinum
+        selectedTheme = savedTheme
+        appleCookiesManaged = CookieImportStore.isManagedPath(savedAppleCookiesPath)
+        RetroPalette.theme = savedTheme
 
         // CommandRunner owns the live process state. Forward its changes so every
         // view observing AppModel redraws while commands and log output arrive.
         runnerObservation = runner.objectWillChange.sink { [weak self] _ in
             self?.objectWillChange.send()
         }
-        runner.onBatchFinished = { [weak self] _ in self?.refreshDependencies() }
+        albumMergeObservation = albumMergeService.objectWillChange.sink { [weak self] _ in
+            self?.objectWillChange.send()
+        }
+        runner.onBatchFinished = { [weak self] success in
+            self?.refreshDependencies()
+            if let extractionURL = self?.pendingCookieExtractionURL {
+                self?.finishCookieExtraction(success: success, temporaryURL: extractionURL)
+                return
+            }
+            if success { self?.beginAlbumPostProcessingIfNeeded() }
+            else { self?.pendingAlbumRoot = nil; self?.pendingAlbumBeforePaths = [] }
+        }
     }
 
     var effectiveSource: MediaSource? {
@@ -151,8 +199,38 @@ final class AppModel: ObservableObject {
     }
 
     var canStartDownload: Bool {
-        !runner.isRunning && effectiveSource != nil && !urlText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        !runner.isRunning && !albumMergeService.isRunning && effectiveSource != nil && !urlText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
+
+    var albumDownloadPreference: AlbumDownloadPreference {
+        get {
+            if !oneTrackOneAlbum { return .individualTracks }
+            return keepIndividualTracks ? .oneTrackOneAlbumKeepingTracks : .oneTrackOneAlbum
+        }
+        set {
+            switch newValue {
+            case .individualTracks: oneTrackOneAlbum = false
+            case .oneTrackOneAlbum: oneTrackOneAlbum = true; keepIndividualTracks = false
+            case .oneTrackOneAlbumKeepingTracks: oneTrackOneAlbum = true; keepIndividualTracks = true
+            }
+        }
+    }
+
+    var isAlbumDownload: Bool {
+        guard playlistMode, let source = effectiveSource,
+              let url = URL(string: urlText.trimmingCharacters(in: .whitespacesAndNewlines)) else { return false }
+        if source == .youtube && mediaKind != .audio { return false }
+        let path = url.path.lowercased()
+        switch source {
+        case .youtube: return url.query?.split(separator: "&").contains(where: { $0.hasPrefix("list=") }) == true
+        case .spotify: return path.contains("/album/") || path.contains("/playlist/")
+        case .appleMusic: return path.contains("/album/")
+        }
+    }
+
+    var activityItem: String { albumMergeService.isRunning ? albumMergeService.currentItem : runner.currentItem }
+    var activityProgress: Double? { albumMergeService.isRunning ? albumMergeService.progress : runner.progress }
+    var isBusy: Bool { runner.isRunning || albumMergeService.isRunning }
 
     func dependency(_ id: DependencyID) -> DependencyStatus? {
         dependencies.first(where: { $0.id == id })
@@ -177,15 +255,107 @@ final class AppModel: ObservableObject {
 
     func startDownload() {
         do {
+            pendingCookieExtractionURL = nil
             guard let source = effectiveSource else {
                 throw AppIssue.message("MediaDock 9 cannot identify this link. Choose YouTube, Spotify, or Apple Music explicitly.")
             }
             let command = try makeDownloadCommand(requireInstalledTool: true)
-            _ = try DownloadDirectory.prepare(at: URL(fileURLWithPath: outputFolder(for: source), isDirectory: true))
+            let root = URL(fileURLWithPath: outputFolder(for: source), isDirectory: true)
+            _ = try DownloadDirectory.prepare(at: root)
+            albumMergeService.resetResult()
+            if isAlbumDownload && oneTrackOneAlbum {
+                pendingAlbumRoot = root
+                pendingAlbumBeforePaths = Set(AlbumMergeService.discoverAudioTracks(in: root).map(\.standardizedFileURL.path))
+            } else {
+                pendingAlbumRoot = nil
+                pendingAlbumBeforePaths = []
+            }
             runner.run([command])
         } catch {
             alertMessage = error.localizedDescription
         }
+    }
+
+    func extractAppleCookiesFromBrowser() {
+        guard !runner.isRunning && !albumMergeService.isRunning else { return }
+        guard let ytDlp = dependency(.ytDlp)?.path ?? RuntimeEnvironment.locate("yt-dlp") else {
+            alertMessage = "yt-dlp is required for local browser extraction. Open Setup to install or rescan it."
+            return
+        }
+        do {
+            let destination = try CookieImportStore.extractionURL()
+            pendingCookieExtractionURL = destination
+            runner.run([CommandSpec(
+                name: "Extract Apple Music cookies from \(appleCookieBrowser.label)",
+                executable: ytDlp,
+                arguments: ["--cookies-from-browser", appleCookieBrowser.rawValue, "--cookies", destination.path],
+                explanation: "yt-dlp reads the selected browser profile and writes a Netscape cookie export for MediaDock. The browser must already be signed in at music.apple.com. This may trigger macOS privacy or Keychain approval and may export cookies for more than one site; do not share the resulting file."
+            )])
+        } catch {
+            alertMessage = error.localizedDescription
+        }
+    }
+
+    private func finishCookieExtraction(success: Bool, temporaryURL: URL) {
+        pendingCookieExtractionURL = nil
+        guard success else {
+            try? FileManager.default.removeItem(at: temporaryURL)
+            return
+        }
+        do {
+            let managedURL = try CookieImportStore.installExtractedAppleMusicCookies(from: temporaryURL)
+            appleCookiesPath = managedURL.path
+            runner.record("Apple Music cookies extracted and stored at MediaDock's protected local path.", kind: .success)
+        } catch {
+            try? FileManager.default.removeItem(at: temporaryURL)
+            alertMessage = "The browser extraction completed, but MediaDock could not install the cookie file: \(error.localizedDescription)"
+        }
+    }
+
+    func stopCurrentWork() {
+        if albumMergeService.isRunning { albumMergeService.cancel() } else { runner.stop() }
+    }
+
+    func retryAlbumMerge() {
+        guard let request = lastAlbumMergeRequest else {
+            alertMessage = "There is no completed album download available to merge again."
+            return
+        }
+        albumMergeService.mergeAlbum(request) { [weak self] result in
+            self?.lastAlbumMergeRequest = result.success ? request : request
+        }
+    }
+
+    func revealAlbumFolder() {
+        guard let path = lastAlbumMergeRequest?.albumDirectory.path else { return }
+        NSWorkspace.shared.open(URL(fileURLWithPath: path))
+    }
+
+    private func beginAlbumPostProcessingIfNeeded() {
+        guard let root = pendingAlbumRoot else { return }
+        pendingAlbumRoot = nil
+        let ffmpeg = dependency(.ffmpeg)?.path ?? RuntimeEnvironment.locate("ffmpeg")
+        let ffprobe: String? = {
+            if let ffmpeg {
+                let sibling = URL(fileURLWithPath: ffmpeg).deletingLastPathComponent().appendingPathComponent("ffprobe").path
+                if FileManager.default.isExecutableFile(atPath: sibling) { return sibling }
+            }
+            return RuntimeEnvironment.locate("ffprobe")
+        }()
+        guard let ffmpeg, let ffprobe else {
+            runner.record("[OneTrackOneAlbum] FFmpeg and FFprobe are required for album merging.", kind: .error)
+            albumMergeService.recordFailure("FFmpeg and FFprobe are required for One Track, One Album.")
+            return
+        }
+        guard let directory = AlbumMergeService.resolveAlbumDirectory(in: root, beforePaths: pendingAlbumBeforePaths) else {
+            runner.record("[OneTrackOneAlbum] Could not resolve the downloaded album folder.", kind: .error)
+            albumMergeService.recordFailure("Could not resolve the downloaded album folder.")
+            return
+        }
+        let request = AlbumMergeRequest(albumDirectory: directory, artist: nil, album: nil, keepIndividualTracks: keepIndividualTracks, ffmpegPath: ffmpeg, ffprobePath: ffprobe, artworkURL: nil, releaseYear: nil)
+        lastAlbumMergeRequest = request
+        albumMergeService.log = { [weak self] text, kind in self?.runner.record(text, kind: kind) }
+        albumMergeService.mergeAlbum(request)
     }
 
     func requestInstall(_ dependencyID: DependencyID) {
@@ -247,6 +417,35 @@ final class AppModel: ObservableObject {
         appleCookiesPath = path
     }
 
+    func importAppleCookies() {
+        let panel = NSOpenPanel()
+        panel.title = "Import Apple Music cookies.txt"
+        panel.message = "MediaDock will copy this selected export into its private credentials folder and use that copy for future Gamdl sessions. It will not upload or display the contents."
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+        panel.allowsMultipleSelection = false
+        panel.allowedContentTypes = [.plainText]
+        guard panel.runModal() == .OK, let sourceURL = panel.url else { return }
+        do {
+            let managedURL = try CookieImportStore.importAppleMusicCookies(from: sourceURL)
+            appleCookiesPath = managedURL.path
+            runner.record("Apple Music cookie export copied to MediaDock's private credentials folder.", kind: .success)
+        } catch {
+            alertMessage = error.localizedDescription
+        }
+    }
+
+    func deleteManagedAppleCookies() {
+        guard appleCookiesManaged else { return }
+        do {
+            try CookieImportStore.removeManagedAppleMusicCookies()
+            appleCookiesPath = ""
+            runner.record("MediaDock's local Apple Music cookie copy was deleted.", kind: .info)
+        } catch {
+            alertMessage = "The local cookie copy could not be deleted: \(error.localizedDescription)"
+        }
+    }
+
     func revealOutputFolder() {
         guard let source = effectiveSource else { return }
         let path = outputFolder(for: source)
@@ -259,6 +458,18 @@ final class AppModel: ObservableObject {
 
     func openWebPage(_ address: String) {
         if let url = URL(string: address) { NSWorkspace.shared.open(url) }
+    }
+
+    func openAppleMusicInBrowser() {
+        guard let url = URL(string: "https://music.apple.com") else { return }
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+        process.arguments = ["-a", appleCookieBrowser.applicationName, url.absoluteString]
+        do {
+            try process.run()
+        } catch {
+            alertMessage = "MediaDock could not open \(appleCookieBrowser.label): \(error.localizedDescription)"
+        }
     }
 
     func copy(_ text: String) {

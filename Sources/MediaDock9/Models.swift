@@ -2,6 +2,8 @@ import Foundation
 
 enum AppSection: String, CaseIterable, Identifiable {
     case download = "Download"
+    case music = "Music"
+    case themes = "Themes"
     case setup = "Setup"
     case cookies = "Cookies"
     case troubleshooting = "Troubleshooting"
@@ -11,11 +13,62 @@ enum AppSection: String, CaseIterable, Identifiable {
     var symbol: String {
         switch self {
         case .download: return "arrow.down.to.line"
+        case .music: return "music.note.list"
+        case .themes: return "paintpalette"
         case .setup: return "wrench.and.screwdriver"
         case .cookies: return "key"
         case .troubleshooting: return "lifepreserver"
         }
     }
+}
+
+enum MediaDockTheme: String, CaseIterable, Identifiable {
+    case platinum
+    case amberTerminal
+    case oceanDesk
+
+    var id: String { rawValue }
+    var name: String {
+        switch self {
+        case .platinum: return "Macintosh 1999"
+        case .amberTerminal: return "DOS Midnight"
+        case .oceanDesk: return "Cyberdeck 2088"
+        }
+    }
+    var description: String {
+        switch self {
+        case .platinum: return "A complete platinum writing-machine palette."
+        case .amberTerminal: return "A green-on-black terminal desk."
+        case .oceanDesk: return "A neon city wired into the interface."
+        }
+    }
+}
+
+enum AlbumDownloadPreference: String, CaseIterable, Identifiable {
+    case individualTracks
+    case oneTrackOneAlbum
+    case oneTrackOneAlbumKeepingTracks
+
+    var id: String { rawValue }
+    var label: String {
+        switch self {
+        case .individualTracks: return "Individual tracks"
+        case .oneTrackOneAlbum: return "One Track, One Album"
+        case .oneTrackOneAlbumKeepingTracks: return "One Track, One Album + keep individual tracks"
+        }
+    }
+}
+
+struct AlbumMergeResult {
+    let success: Bool
+    let outputPath: String?
+    let usedStreamCopy: Bool
+    let usedFallbackEncoding: Bool
+    let sourceDuration: TimeInterval?
+    let outputDuration: TimeInterval?
+    let trackCount: Int
+    let error: String?
+    let cancelled: Bool
 }
 
 enum MediaSource: String, CaseIterable, Identifiable {
@@ -146,6 +199,17 @@ enum BrowserChoice: String, CaseIterable, Identifiable {
     case safari, chrome, firefox, brave, edge, chromium, vivaldi
     var id: String { rawValue }
     var label: String { rawValue.capitalized }
+    var applicationName: String {
+        switch self {
+        case .safari: return "Safari"
+        case .chrome: return "Google Chrome"
+        case .firefox: return "Firefox"
+        case .brave: return "Brave Browser"
+        case .edge: return "Microsoft Edge"
+        case .chromium: return "Chromium"
+        case .vivaldi: return "Vivaldi"
+        }
+    }
 }
 
 enum DependencyID: String, CaseIterable, Identifiable {

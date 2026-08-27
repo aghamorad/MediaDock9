@@ -1,18 +1,45 @@
 import SwiftUI
 
 enum RetroPalette {
-    static let desktop = Color(red: 0.43, green: 0.45, blue: 0.46)
-    static let chrome = Color(red: 0.82, green: 0.82, blue: 0.79)
-    static let paper = Color(red: 0.91, green: 0.90, blue: 0.86)
-    static let field = Color(red: 0.97, green: 0.96, blue: 0.91)
-    static let ink = Color(red: 0.08, green: 0.09, blue: 0.09)
-    static let darkEdge = Color(red: 0.18, green: 0.19, blue: 0.19)
-    static let midEdge = Color(red: 0.48, green: 0.49, blue: 0.47)
-    static let highlight = Color.white.opacity(0.86)
-    static let cyan = Color(red: 0.03, green: 0.72, blue: 0.73)
-    static let green = Color(red: 0.20, green: 0.66, blue: 0.34)
-    static let amber = Color(red: 0.91, green: 0.59, blue: 0.12)
-    static let red = Color(red: 0.78, green: 0.20, blue: 0.18)
+    static var theme: MediaDockTheme = .platinum
+
+    private static var palette: Palette {
+        switch theme {
+        case .platinum:
+            return Palette(desktop: Color(red: 0.43, green: 0.45, blue: 0.46), chrome: Color(red: 0.82, green: 0.82, blue: 0.79), paper: Color(red: 0.91, green: 0.90, blue: 0.86), field: Color(red: 0.97, green: 0.96, blue: 0.91), ink: Color(red: 0.08, green: 0.09, blue: 0.09), darkEdge: Color(red: 0.18, green: 0.19, blue: 0.19), midEdge: Color(red: 0.48, green: 0.49, blue: 0.47), cyan: Color(red: 0.03, green: 0.72, blue: 0.73), green: Color(red: 0.20, green: 0.66, blue: 0.34), amber: Color(red: 0.91, green: 0.59, blue: 0.12), red: Color(red: 0.78, green: 0.20, blue: 0.18))
+        case .amberTerminal:
+            return Palette(desktop: Color(red: 0.01, green: 0.02, blue: 0.01), chrome: Color(red: 0.02, green: 0.04, blue: 0.02), paper: Color(red: 0.03, green: 0.06, blue: 0.03), field: Color(red: 0.01, green: 0.02, blue: 0.01), ink: Color(red: 0.45, green: 0.98, blue: 0.38), darkEdge: Color.black, midEdge: Color(red: 0.20, green: 0.50, blue: 0.17), cyan: Color(red: 0.45, green: 0.98, blue: 0.38), green: Color(red: 0.45, green: 0.98, blue: 0.38), amber: Color(red: 0.78, green: 1.0, blue: 0.40), red: Color(red: 1.0, green: 0.40, blue: 0.37))
+        case .oceanDesk:
+            return Palette(desktop: Color(red: 0.03, green: 0.03, blue: 0.04), chrome: Color(red: 0.07, green: 0.08, blue: 0.10), paper: Color(red: 0.05, green: 0.06, blue: 0.08), field: Color(red: 0.035, green: 0.04, blue: 0.05), ink: Color(red: 0.91, green: 0.98, blue: 1.0), darkEdge: Color(red: 0.01, green: 0.01, blue: 0.02), midEdge: Color(red: 0.33, green: 0.47, blue: 0.50), cyan: Color(red: 0.45, green: 0.93, blue: 0.96), green: Color(red: 0.55, green: 0.82, blue: 0.48), amber: Color(red: 1.0, green: 0.55, blue: 0.70), red: Color(red: 1.0, green: 0.45, blue: 0.37))
+        }
+    }
+
+    private struct Palette {
+        let desktop, chrome, paper, field, ink, darkEdge, midEdge, cyan, green, amber, red: Color
+    }
+
+    static var desktop: Color { palette.desktop }
+    static var chrome: Color { palette.chrome }
+    static var paper: Color { palette.paper }
+    static var field: Color { palette.field }
+    static var ink: Color { palette.ink }
+    static var darkEdge: Color { palette.darkEdge }
+    static var midEdge: Color { palette.midEdge }
+    static var highlight: Color { theme == .platinum ? Color.white.opacity(0.86) : Color.white.opacity(0.18) }
+    static var cyan: Color { palette.cyan }
+    static var green: Color { palette.green }
+    static var amber: Color { palette.amber }
+    static var red: Color { palette.red }
+}
+
+extension MediaDockTheme {
+    var accentColor: Color {
+        switch self {
+        case .platinum: return Color(red: 0.03, green: 0.72, blue: 0.73)
+        case .amberTerminal: return Color(red: 0.45, green: 0.98, blue: 0.38)
+        case .oceanDesk: return Color(red: 1.0, green: 0.31, blue: 0.64)
+        }
+    }
 }
 
 extension Font {

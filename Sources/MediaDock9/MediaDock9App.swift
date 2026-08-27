@@ -38,9 +38,9 @@ struct MediaDock9App: App {
                 Button("Copy Current Command") { model.copy(model.runner.activeCommand) }
                     .keyboardShortcut("c", modifiers: [.command, .option])
                 Divider()
-                Button("Stop Current Command") { model.runner.stop() }
+                Button("Stop Current Work") { model.stopCurrentWork() }
                     .keyboardShortcut(".", modifiers: .command)
-                    .disabled(!model.runner.isRunning)
+                    .disabled(!model.isBusy)
             }
         }
     }

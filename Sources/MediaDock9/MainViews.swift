@@ -27,6 +27,10 @@ struct DownloadView: View {
                     destinationPanel(for: source)
                 }
 
+                if let result = model.albumMergeService.lastResult {
+                    albumResultPanel(result)
+                }
+
                 RetroPanel(title: "Exact command preview") {
                     Text(model.commandPreview)
                         .font(.system(size: 11, design: .monospaced))
@@ -173,7 +177,50 @@ struct DownloadView: View {
                         .buttonStyle(RetroButtonStyle())
                 }
             }
+
+            if model.isAlbumDownload {
+                ThinRule()
+                Toggle("One Track, One Album", isOn: $model.oneTrackOneAlbum)
+                    .toggleStyle(.checkbox)
+                Text("Merge all tracks in this album into one continuous audio file.")
+                    .font(.retro(10))
+                    .foregroundStyle(RetroPalette.ink.opacity(0.68))
+                if model.oneTrackOneAlbum {
+                    Toggle("Keep individual tracks", isOn: $model.keepIndividualTracks)
+                        .toggleStyle(.checkbox)
+                }
+            }
         }
+    }
+
+    private func albumResultPanel(_ result: AlbumMergeResult) -> some View {
+        RetroPanel(title: result.success ? "One Track, One Album complete" : "Album downloaded") {
+            if result.success {
+                Text("Downloaded and merged")
+                    .font(.retro(13, weight: .bold))
+                if let outputPath = result.outputPath {
+                    Text(URL(fileURLWithPath: outputPath).deletingPathExtension().lastPathComponent)
+                        .font(.retro(11))
+                }
+                Text("\(result.trackCount) tracks · \(durationLabel(result.outputDuration ?? result.sourceDuration))")
+                    .font(.system(size: 11, design: .monospaced))
+            } else {
+                Text("One Track, One Album failed")
+                    .font(.retro(13, weight: .bold))
+                    .foregroundStyle(RetroPalette.red)
+                if let error = result.error { Text(error).font(.retro(10)) }
+                HStack {
+                    Button("Retry") { model.retryAlbumMerge() }.buttonStyle(RetroButtonStyle(prominent: true))
+                    Button("Open Folder") { model.revealAlbumFolder() }.buttonStyle(RetroButtonStyle())
+                }
+            }
+        }
+    }
+
+    private func durationLabel(_ duration: TimeInterval?) -> String {
+        guard let duration else { return "duration unavailable" }
+        let total = Int(duration.rounded())
+        return String(format: "%02d:%02d:%02d", total / 3600, (total / 60) % 60, total % 60)
     }
 
     private func destinationPanel(for source: MediaSource) -> some View {
@@ -200,6 +247,84 @@ struct DownloadView: View {
     private var detectionColor: Color {
         if model.sourceChoice != .automatic { return RetroPalette.ink.opacity(0.72) }
         return MediaSource.detect(from: model.urlText) == nil && !model.urlText.isEmpty ? RetroPalette.red : RetroPalette.ink.opacity(0.72)
+    }
+}
+
+struct MusicView: View {
+    @EnvironmentObject private var model: AppModel
+
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 12) {
+                RetroPanel(title: "Music settings") {
+                    Text("Album downloads")
+                        .font(.retro(13, weight: .bold))
+                    Picker("Album downloads", selection: Binding(
+                        get: { model.albumDownloadPreference },
+                        set: { model.albumDownloadPreference = $0 }
+                    )) {
+                        ForEach(AlbumDownloadPreference.allCases) { preference in
+                            Text(preference.label).tag(preference)
+                        }
+                    }
+                    .pickerStyle(.radioGroup)
+                    .labelsHidden()
+                    Text("These settings are also used by the album controls on the Download screen. Single-song downloads are unaffected.")
+                        .font(.retro(10))
+                        .foregroundStyle(RetroPalette.ink.opacity(0.68))
+                }
+            }
+            .padding(14)
+        }
+        .background(RetroPalette.desktop)
+    }
+}
+
+struct ThemesView: View {
+    @EnvironmentObject private var model: AppModel
+
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 12) {
+                RetroPanel(title: "Interactive themes") {
+                    Text("Themes change colors and borders only. Download, cookie, setup, stop, retry, and folder buttons keep the same behavior.")
+                        .font(.retro(11))
+                        .fixedSize(horizontal: false, vertical: true)
+                    ForEach(MediaDockTheme.allCases) { theme in
+                        Button {
+                            model.selectedTheme = theme
+                        } label: {
+                            HStack(spacing: 12) {
+                                Circle()
+                                    .fill(theme.accentColor)
+                                    .frame(width: 16, height: 16)
+                                    .overlay(Circle().stroke(RetroPalette.darkEdge, lineWidth: 1))
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(theme.name)
+                                        .font(.retro(13, weight: .bold))
+                                    Text(theme.description)
+                                        .font(.retro(10))
+                                        .foregroundStyle(RetroPalette.ink.opacity(0.72))
+                                }
+                                Spacer()
+                                if model.selectedTheme == theme {
+                                    Text("ACTIVE")
+                                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                }
+                            }
+                            .padding(10)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(model.selectedTheme == theme ? RetroPalette.paper : RetroPalette.chrome)
+                            .raisedBorder(emphasized: model.selectedTheme == theme)
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(RetroPalette.ink)
+                    }
+                }
+            }
+            .padding(14)
+        }
+        .background(RetroPalette.desktop)
     }
 }
 
@@ -319,13 +444,15 @@ struct CookiesView: View {
                 RetroPanel(title: "Apple Music · cookies.txt") {
                     StepLine(number: 1, text: "Open music.apple.com in a browser and sign in to the Apple Music subscription you intend to use.")
                     StepLine(number: 2, text: "Export only after you are signed in. Gamdl requires Netscape/Mozilla cookie-file format; use the export method linked in Gamdl's own instructions.")
-                    StepLine(number: 3, text: "Choose the resulting cookies.txt here. MediaDock remembers the path but never reads, copies, previews, uploads, or logs its contents.")
+                    StepLine(number: 3, text: "Use Import locally below. MediaDock copies the selected export into its private credentials folder, then passes that fixed local path to Gamdl each time. This avoids asking you to relocate the file manually.")
 
                     HStack {
-                        Button("Open Apple Music") { model.openWebPage("https://music.apple.com") }
+                        Button("Open Apple Music in browser") { model.openAppleMusicInBrowser() }
                             .buttonStyle(RetroButtonStyle())
                         Button("Open Gamdl instructions") { model.openWebPage("https://github.com/glomatico/gamdl#-prerequisites") }
                             .buttonStyle(RetroButtonStyle())
+                        Button("Import exported file…") { model.importAppleCookies() }
+                            .buttonStyle(RetroButtonStyle(prominent: true))
                         Spacer()
                     }
 
@@ -338,17 +465,44 @@ struct CookiesView: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(8)
                             .insetBorder()
-                        Button("Choose…") { model.chooseAppleCookies() }
+                        Button("Choose external…") { model.chooseAppleCookies() }
                             .buttonStyle(RetroButtonStyle(prominent: true))
-                        Button("Forget path") { model.appleCookiesPath = "" }
-                            .buttonStyle(RetroButtonStyle())
-                            .disabled(model.appleCookiesPath.isEmpty)
+                        if model.appleCookiesManaged {
+                            Button("Delete local copy") { model.deleteManagedAppleCookies() }
+                                .buttonStyle(RetroButtonStyle())
+                        } else {
+                            Button("Forget path") { model.appleCookiesPath = "" }
+                                .buttonStyle(RetroButtonStyle())
+                        }
                     }
 
-                    Text("Treat cookies.txt like a password. Store it privately, never paste it into a chat or log, and delete it when no longer needed. Signing out of Apple Music invalidates the session but may also require a fresh export later.")
+                    Text("What happens: MediaDock copies only the file you select to ~/Library/Application Support/MediaDock9/credentials/apple-music-cookies.txt, restricts it to your account, and passes that path to Gamdl. The app does not collect passwords or upload the file. Cookies expire or become invalid when you sign out, so you may need to import a fresh export later.")
                         .font(.retro(10))
                         .foregroundStyle(RetroPalette.red)
                         .fixedSize(horizontal: false, vertical: true)
+                }
+
+                RetroPanel(title: "Apple Music · one-click local extraction") {
+                    Text("For beginners: sign in to music.apple.com in the browser profile you choose below, leave that browser available, then press Extract. MediaDock asks yt-dlp to copy the browser's cookies into its own protected file and uses that file for future Gamdl sessions.")
+                        .font(.retro(11))
+                        .fixedSize(horizontal: false, vertical: true)
+                    PropertyRow(label: "Signed-in browser") {
+                        Picker("Signed-in browser", selection: $model.appleCookieBrowser) {
+                            ForEach(BrowserChoice.allCases) { Text($0.label).tag($0) }
+                        }
+                        .labelsHidden()
+                        .frame(width: 180)
+                        Button("Extract from browser") { model.extractAppleCookiesFromBrowser() }
+                            .buttonStyle(RetroButtonStyle(prominent: true))
+                            .disabled(model.isBusy)
+                    }
+                    Text("This is a local export, not a login. The browser must already be signed in. yt-dlp may need macOS permission to read the selected profile. Cookie exports can contain sessions for multiple sites, so keep the file private and use a browser profile you trust.")
+                        .font(.retro(10))
+                        .foregroundStyle(RetroPalette.red)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text("MediaDock stores the reusable copy at ~/Library/Application Support/MediaDock9/credentials/apple-music-cookies.txt. The temporary extraction file is removed after installation or failure.")
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundStyle(RetroPalette.ink.opacity(0.72))
                 }
 
                 RetroPanel(title: "YouTube · browser sign-in") {
@@ -370,8 +524,8 @@ struct CookiesView: View {
                 }
 
                 RetroPanel(title: "What the app stores") {
-                    PrivacyRow(item: "Stored", detail: "Cookie-file path, selected browser name, output folders, and download-option preferences.")
-                    PrivacyRow(item: "Not stored", detail: "Cookie contents, Apple or Google passwords, tokens copied from logs, or a private command history file.")
+                    PrivacyRow(item: "Stored", detail: "Cookie-file path, selected browser name, output folders, and download-option preferences. If you choose Import locally, the selected cookie export is copied into MediaDock's protected credentials folder.")
+                    PrivacyRow(item: "Not stored", detail: "Passwords, cookies from browsers you did not select, tokens copied from logs, or a private command history file.")
                     PrivacyRow(item: "Visible", detail: "The exact command line, which includes the cookie-file path but never the file's contents.")
                 }
             }
