@@ -52,6 +52,9 @@ final class AppModel: ObservableObject {
     @Published var browserChoice: BrowserChoice {
         didSet { defaults.set(browserChoice.rawValue, forKey: Keys.browserChoice) }
     }
+    @Published var appleCookieBrowser: BrowserChoice {
+        didSet { defaults.set(appleCookieBrowser.rawValue, forKey: Keys.appleCookieBrowser) }
+    }
     @Published var appleCookiesPath: String {
         didSet {
             defaults.set(appleCookiesPath, forKey: Keys.appleCookiesPath)
@@ -95,6 +98,7 @@ final class AppModel: ObservableObject {
     private var albumMergeObservation: AnyCancellable?
     private var pendingAlbumRoot: URL?
     private var pendingAlbumBeforePaths: Set<String> = []
+    private var pendingCookieExtractionURL: URL?
     private(set) var lastAlbumMergeRequest: AlbumMergeRequest?
 
     private enum Keys {
@@ -113,6 +117,7 @@ final class AppModel: ObservableObject {
         static let subtitleLanguages = "subtitleLanguages"
         static let useYouTubeCookies = "useYouTubeCookies"
         static let browserChoice = "browserChoice"
+        static let appleCookieBrowser = "appleCookieBrowser"
         static let appleCookiesPath = "appleCookiesPath"
         static let youtubeFolder = "youtubeFolder"
         static let spotifyFolder = "spotifyFolder"
@@ -140,6 +145,7 @@ final class AppModel: ObservableObject {
         subtitleLanguages = defaults.string(forKey: Keys.subtitleLanguages) ?? "en.*,en"
         useYouTubeCookies = defaults.object(forKey: Keys.useYouTubeCookies) as? Bool ?? false
         browserChoice = BrowserChoice(rawValue: defaults.string(forKey: Keys.browserChoice) ?? "") ?? .safari
+        appleCookieBrowser = BrowserChoice(rawValue: defaults.string(forKey: Keys.appleCookieBrowser) ?? "") ?? .chrome
         let savedAppleCookiesPath = defaults.string(forKey: Keys.appleCookiesPath) ?? ""
         appleCookiesPath = savedAppleCookiesPath
         youtubeFolder = defaults.string(forKey: Keys.youtubeFolder) ?? "\(downloads)/YouTube"
@@ -162,6 +168,10 @@ final class AppModel: ObservableObject {
         }
         runner.onBatchFinished = { [weak self] success in
             self?.refreshDependencies()
+            if let extractionURL = self?.pendingCookieExtractionURL {
+                self?.finishCookieExtraction(success: success, temporaryURL: extractionURL)
+                return
+            }
             if success { self?.beginAlbumPostProcessingIfNeeded() }
             else { self?.pendingAlbumRoot = nil; self?.pendingAlbumBeforePaths = [] }
         }
@@ -245,6 +255,7 @@ final class AppModel: ObservableObject {
 
     func startDownload() {
         do {
+            pendingCookieExtractionURL = nil
             guard let source = effectiveSource else {
                 throw AppIssue.message("MediaDock 9 cannot identify this link. Choose YouTube, Spotify, or Apple Music explicitly.")
             }
@@ -262,6 +273,42 @@ final class AppModel: ObservableObject {
             runner.run([command])
         } catch {
             alertMessage = error.localizedDescription
+        }
+    }
+
+    func extractAppleCookiesFromBrowser() {
+        guard !runner.isRunning && !albumMergeService.isRunning else { return }
+        guard let ytDlp = dependency(.ytDlp)?.path ?? RuntimeEnvironment.locate("yt-dlp") else {
+            alertMessage = "yt-dlp is required for local browser extraction. Open Setup to install or rescan it."
+            return
+        }
+        do {
+            let destination = try CookieImportStore.extractionURL()
+            pendingCookieExtractionURL = destination
+            runner.run([CommandSpec(
+                name: "Extract Apple Music cookies from \(appleCookieBrowser.label)",
+                executable: ytDlp,
+                arguments: ["--cookies-from-browser", appleCookieBrowser.rawValue, "--cookies", destination.path],
+                explanation: "yt-dlp reads the selected browser profile and writes a Netscape cookie export for MediaDock. The browser must already be signed in at music.apple.com. This may trigger macOS privacy or Keychain approval and may export cookies for more than one site; do not share the resulting file."
+            )])
+        } catch {
+            alertMessage = error.localizedDescription
+        }
+    }
+
+    private func finishCookieExtraction(success: Bool, temporaryURL: URL) {
+        pendingCookieExtractionURL = nil
+        guard success else {
+            try? FileManager.default.removeItem(at: temporaryURL)
+            return
+        }
+        do {
+            let managedURL = try CookieImportStore.installExtractedAppleMusicCookies(from: temporaryURL)
+            appleCookiesPath = managedURL.path
+            runner.record("Apple Music cookies extracted and stored at MediaDock's protected local path.", kind: .success)
+        } catch {
+            try? FileManager.default.removeItem(at: temporaryURL)
+            alertMessage = "The browser extraction completed, but MediaDock could not install the cookie file: \(error.localizedDescription)"
         }
     }
 
@@ -411,6 +458,18 @@ final class AppModel: ObservableObject {
 
     func openWebPage(_ address: String) {
         if let url = URL(string: address) { NSWorkspace.shared.open(url) }
+    }
+
+    func openAppleMusicInBrowser() {
+        guard let url = URL(string: "https://music.apple.com") else { return }
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+        process.arguments = ["-a", appleCookieBrowser.applicationName, url.absoluteString]
+        do {
+            try process.run()
+        } catch {
+            alertMessage = "MediaDock could not open \(appleCookieBrowser.label): \(error.localizedDescription)"
+        }
     }
 
     func copy(_ text: String) {

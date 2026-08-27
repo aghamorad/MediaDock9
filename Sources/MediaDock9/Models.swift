@@ -199,6 +199,17 @@ enum BrowserChoice: String, CaseIterable, Identifiable {
     case safari, chrome, firefox, brave, edge, chromium, vivaldi
     var id: String { rawValue }
     var label: String { rawValue.capitalized }
+    var applicationName: String {
+        switch self {
+        case .safari: return "Safari"
+        case .chrome: return "Google Chrome"
+        case .firefox: return "Firefox"
+        case .brave: return "Brave Browser"
+        case .edge: return "Microsoft Edge"
+        case .chromium: return "Chromium"
+        case .vivaldi: return "Vivaldi"
+        }
+    }
 }
 
 enum DependencyID: String, CaseIterable, Identifiable {

@@ -52,6 +52,30 @@ enum CookieImportStore {
         }
     }
 
+    static func extractionURL() throws -> URL {
+        do {
+            try FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true)
+            try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: directoryURL.path)
+            return directoryURL.appendingPathComponent(".apple-music-cookies-extract-\(UUID().uuidString).txt")
+        } catch {
+            throw CookieImportError.destinationUnavailable(error.localizedDescription)
+        }
+    }
+
+    static func installExtractedAppleMusicCookies(from temporaryURL: URL) throws -> URL {
+        let fm = FileManager.default
+        guard fm.fileExists(atPath: temporaryURL.path) else { throw CookieImportError.sourceMissing }
+        do {
+            try? fm.removeItem(at: appleMusicCookieURL)
+            try fm.setAttributes([.posixPermissions: 0o600], ofItemAtPath: temporaryURL.path)
+            try fm.moveItem(at: temporaryURL, to: appleMusicCookieURL)
+            try fm.setAttributes([.posixPermissions: 0o600], ofItemAtPath: appleMusicCookieURL.path)
+            return appleMusicCookieURL
+        } catch {
+            throw CookieImportError.destinationUnavailable(error.localizedDescription)
+        }
+    }
+
     static func removeManagedAppleMusicCookies() throws {
         guard FileManager.default.fileExists(atPath: appleMusicCookieURL.path) else { return }
         try FileManager.default.removeItem(at: appleMusicCookieURL)

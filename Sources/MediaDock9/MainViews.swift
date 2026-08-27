@@ -447,11 +447,11 @@ struct CookiesView: View {
                     StepLine(number: 3, text: "Use Import locally below. MediaDock copies the selected export into its private credentials folder, then passes that fixed local path to Gamdl each time. This avoids asking you to relocate the file manually.")
 
                     HStack {
-                        Button("Open Apple Music") { model.openWebPage("https://music.apple.com") }
+                        Button("Open Apple Music in browser") { model.openAppleMusicInBrowser() }
                             .buttonStyle(RetroButtonStyle())
                         Button("Open Gamdl instructions") { model.openWebPage("https://github.com/glomatico/gamdl#-prerequisites") }
                             .buttonStyle(RetroButtonStyle())
-                        Button("Import locally…") { model.importAppleCookies() }
+                        Button("Import exported file…") { model.importAppleCookies() }
                             .buttonStyle(RetroButtonStyle(prominent: true))
                         Spacer()
                     }
@@ -480,6 +480,29 @@ struct CookiesView: View {
                         .font(.retro(10))
                         .foregroundStyle(RetroPalette.red)
                         .fixedSize(horizontal: false, vertical: true)
+                }
+
+                RetroPanel(title: "Apple Music · one-click local extraction") {
+                    Text("For beginners: sign in to music.apple.com in the browser profile you choose below, leave that browser available, then press Extract. MediaDock asks yt-dlp to copy the browser's cookies into its own protected file and uses that file for future Gamdl sessions.")
+                        .font(.retro(11))
+                        .fixedSize(horizontal: false, vertical: true)
+                    PropertyRow(label: "Signed-in browser") {
+                        Picker("Signed-in browser", selection: $model.appleCookieBrowser) {
+                            ForEach(BrowserChoice.allCases) { Text($0.label).tag($0) }
+                        }
+                        .labelsHidden()
+                        .frame(width: 180)
+                        Button("Extract from browser") { model.extractAppleCookiesFromBrowser() }
+                            .buttonStyle(RetroButtonStyle(prominent: true))
+                            .disabled(model.isBusy)
+                    }
+                    Text("This is a local export, not a login. The browser must already be signed in. yt-dlp may need macOS permission to read the selected profile. Cookie exports can contain sessions for multiple sites, so keep the file private and use a browser profile you trust.")
+                        .font(.retro(10))
+                        .foregroundStyle(RetroPalette.red)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text("MediaDock stores the reusable copy at ~/Library/Application Support/MediaDock9/credentials/apple-music-cookies.txt. The temporary extraction file is removed after installation or failure.")
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundStyle(RetroPalette.ink.opacity(0.72))
                 }
 
                 RetroPanel(title: "YouTube · browser sign-in") {
