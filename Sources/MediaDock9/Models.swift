@@ -3,6 +3,7 @@ import Foundation
 enum AppSection: String, CaseIterable, Identifiable {
     case download = "Download"
     case music = "Music"
+    case themes = "Themes"
     case setup = "Setup"
     case cookies = "Cookies"
     case troubleshooting = "Troubleshooting"
@@ -13,9 +14,32 @@ enum AppSection: String, CaseIterable, Identifiable {
         switch self {
         case .download: return "arrow.down.to.line"
         case .music: return "music.note.list"
+        case .themes: return "paintpalette"
         case .setup: return "wrench.and.screwdriver"
         case .cookies: return "key"
         case .troubleshooting: return "lifepreserver"
+        }
+    }
+}
+
+enum MediaDockTheme: String, CaseIterable, Identifiable {
+    case platinum
+    case amberTerminal
+    case oceanDesk
+
+    var id: String { rawValue }
+    var name: String {
+        switch self {
+        case .platinum: return "Classic Platinum"
+        case .amberTerminal: return "Amber Terminal"
+        case .oceanDesk: return "Ocean Desk"
+        }
+    }
+    var description: String {
+        switch self {
+        case .platinum: return "The original retro Mac palette."
+        case .amberTerminal: return "Warm black, copper, and terminal amber."
+        case .oceanDesk: return "Deep blue panels with clear cyan actions."
         }
     }
 }

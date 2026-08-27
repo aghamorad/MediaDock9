@@ -4,7 +4,7 @@ I was playing around with Codex and decided to make this simpler for anyone who 
 
 MediaDock 9 is a native macOS front end for `yt-dlp`, `spotdl`, `gamdl`, FFmpeg, Deno, pipx, and Homebrew. It puts those existing command-line tools behind a graphical interface without reimplementing their download or account logic.
 
-The activity console follows the command runner live: running/idle status, current item, progress, controls, and tool output update as the underlying downloader emits them. Music album downloads can optionally run the provider-independent **One Track, One Album** post-processing stage.
+The activity console follows the command runner live: running/idle status, current item, progress, controls, and tool output update as the underlying downloader emits them. Music album downloads can optionally run the provider-independent **One Track, One Album** post-processing stage. The app also offers an explicit local Apple Music cookie import and selectable interactive themes.
 
 Before launching a downloader, MediaDock creates the selected destination if needed and verifies that it is writable. This also ensures Gamdl can initialize its optional SQLite download database before media processing begins.
 
@@ -79,8 +79,9 @@ The build script keeps compiler caches in the project. It also recognizes the sp
 | `CommandRuntime.swift` | executable search path, version scans, process execution, streaming logs, progress, cancellation |
 | `Models.swift` | source/format/dependency models and safe shell-display quoting |
 | `RootView.swift` | window shell, sidebar, command-review sheet, permanent activity console |
-| `MainViews.swift` | Download, Music, Setup, Cookies, and Troubleshooting screens |
+| `MainViews.swift` | Download, Music, Themes, Setup, Cookies, and Troubleshooting screens |
 | `AlbumMergeService.swift` | Ordered track discovery, FFmpeg merge/fallback, FFprobe verification, cancellation, and safe cleanup |
+| `CookieImport.swift` | Explicit Apple Music cookie-export import into protected local app storage |
 | `RetroTheme.swift` | sparse platinum-gray controls, inset/raised borders, status lights, typography |
 | `SelfCheck.swift` | isolated checks for URL detection, quoting, and all three command builders |
 
@@ -183,6 +184,8 @@ When enabled, MediaDock passes the selected browser name to yt-dlp’s `--cookie
 ### Apple Music
 
 Gamdl currently requires an active Apple Music subscription and a Netscape/Mozilla-format browser cookie export in its ordinary cookie-based mode. MediaDock stores only the selected file path in `UserDefaults`.
+
+The Cookies screen can import that export into `~/Library/Application Support/MediaDock9/credentials/apple-music-cookies.txt`. The copy is created with user-only permissions and the app passes its fixed path to Gamdl on each session. MediaDock does not automatically harvest browser databases or collect passwords. YouTube continues to use yt-dlp's explicit browser-cookie option.
 
 ### One Track, One Album
 

@@ -53,8 +53,12 @@ final class AppModel: ObservableObject {
         didSet { defaults.set(browserChoice.rawValue, forKey: Keys.browserChoice) }
     }
     @Published var appleCookiesPath: String {
-        didSet { defaults.set(appleCookiesPath, forKey: Keys.appleCookiesPath) }
+        didSet {
+            defaults.set(appleCookiesPath, forKey: Keys.appleCookiesPath)
+            appleCookiesManaged = CookieImportStore.isManagedPath(appleCookiesPath)
+        }
     }
+    @Published private(set) var appleCookiesManaged = false
     @Published var youtubeFolder: String {
         didSet { defaults.set(youtubeFolder, forKey: Keys.youtubeFolder) }
     }
@@ -69,6 +73,12 @@ final class AppModel: ObservableObject {
     }
     @Published var keepIndividualTracks: Bool {
         didSet { defaults.set(keepIndividualTracks, forKey: Keys.keepIndividualTracks) }
+    }
+    @Published var selectedTheme: MediaDockTheme {
+        didSet {
+            defaults.set(selectedTheme.rawValue, forKey: Keys.selectedTheme)
+            RetroPalette.theme = selectedTheme
+        }
     }
 
     @Published private(set) var dependencies: [DependencyStatus] = []
@@ -109,6 +119,7 @@ final class AppModel: ObservableObject {
         static let appleMusicFolder = "appleMusicFolder"
         static let oneTrackOneAlbum = "oneTrackOneAlbum"
         static let keepIndividualTracks = "keepIndividualTracks"
+        static let selectedTheme = "selectedTheme"
     }
 
     init(defaults: UserDefaults = .standard) {
@@ -129,12 +140,17 @@ final class AppModel: ObservableObject {
         subtitleLanguages = defaults.string(forKey: Keys.subtitleLanguages) ?? "en.*,en"
         useYouTubeCookies = defaults.object(forKey: Keys.useYouTubeCookies) as? Bool ?? false
         browserChoice = BrowserChoice(rawValue: defaults.string(forKey: Keys.browserChoice) ?? "") ?? .safari
-        appleCookiesPath = defaults.string(forKey: Keys.appleCookiesPath) ?? ""
+        let savedAppleCookiesPath = defaults.string(forKey: Keys.appleCookiesPath) ?? ""
+        appleCookiesPath = savedAppleCookiesPath
         youtubeFolder = defaults.string(forKey: Keys.youtubeFolder) ?? "\(downloads)/YouTube"
         spotifyFolder = defaults.string(forKey: Keys.spotifyFolder) ?? "\(downloads)/Spotify"
         appleMusicFolder = defaults.string(forKey: Keys.appleMusicFolder) ?? "\(downloads)/AppleMusic"
         oneTrackOneAlbum = defaults.object(forKey: Keys.oneTrackOneAlbum) as? Bool ?? false
         keepIndividualTracks = defaults.object(forKey: Keys.keepIndividualTracks) as? Bool ?? true
+        let savedTheme = MediaDockTheme(rawValue: defaults.string(forKey: Keys.selectedTheme) ?? "") ?? .platinum
+        selectedTheme = savedTheme
+        appleCookiesManaged = CookieImportStore.isManagedPath(savedAppleCookiesPath)
+        RetroPalette.theme = savedTheme
 
         // CommandRunner owns the live process state. Forward its changes so every
         // view observing AppModel redraws while commands and log output arrive.
@@ -352,6 +368,35 @@ final class AppModel: ObservableObject {
         panel.allowedContentTypes = [.plainText]
         guard panel.runModal() == .OK, let path = panel.url?.path else { return }
         appleCookiesPath = path
+    }
+
+    func importAppleCookies() {
+        let panel = NSOpenPanel()
+        panel.title = "Import Apple Music cookies.txt"
+        panel.message = "MediaDock will copy this selected export into its private credentials folder and use that copy for future Gamdl sessions. It will not upload or display the contents."
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+        panel.allowsMultipleSelection = false
+        panel.allowedContentTypes = [.plainText]
+        guard panel.runModal() == .OK, let sourceURL = panel.url else { return }
+        do {
+            let managedURL = try CookieImportStore.importAppleMusicCookies(from: sourceURL)
+            appleCookiesPath = managedURL.path
+            runner.record("Apple Music cookie export copied to MediaDock's private credentials folder.", kind: .success)
+        } catch {
+            alertMessage = error.localizedDescription
+        }
+    }
+
+    func deleteManagedAppleCookies() {
+        guard appleCookiesManaged else { return }
+        do {
+            try CookieImportStore.removeManagedAppleMusicCookies()
+            appleCookiesPath = ""
+            runner.record("MediaDock's local Apple Music cookie copy was deleted.", kind: .info)
+        } catch {
+            alertMessage = "The local cookie copy could not be deleted: \(error.localizedDescription)"
+        }
     }
 
     func revealOutputFolder() {

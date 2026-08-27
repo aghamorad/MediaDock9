@@ -17,6 +17,16 @@ final class AlbumMergeServiceTests: XCTestCase {
         XCTAssertEqual(AlbumMergeService.sanitizedFilename(artist: "هنرمند 日本語", album: "آلبوم Café"), "هنرمند 日本語 - آلبوم Café.m4a")
     }
 
+    func testThemeCatalogIsInteractiveAndStable() {
+        XCTAssertEqual(MediaDockTheme.allCases.count, 3)
+        XCTAssertEqual(MediaDockTheme.allCases.map(\.name), ["Classic Platinum", "Amber Terminal", "Ocean Desk"])
+    }
+
+    func testCookieStoreUsesPrivateManagedLocation() {
+        XCTAssertTrue(CookieImportStore.appleMusicCookieURL.path.contains("Application Support/MediaDock9/credentials"))
+        XCTAssertTrue(CookieImportStore.isManagedPath(CookieImportStore.appleMusicCookieURL.path))
+    }
+
     @MainActor
     func testPreferenceMapsToSharedOptions() {
         let defaults = UserDefaults(suiteName: "MediaDock9Tests-\(UUID().uuidString)")!

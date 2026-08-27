@@ -16,6 +16,7 @@ struct RootView: View {
                     switch model.section {
                     case .download: DownloadView()
                     case .music: MusicView()
+                    case .themes: ThemesView()
                     case .setup: SetupView()
                     case .cookies: CookiesView()
                     case .troubleshooting: TroubleshootingView()
@@ -60,7 +61,7 @@ private struct Sidebar: View {
                 Text("MEDIADOCK 9")
                     .font(.retro(13, weight: .black))
                     .tracking(0.8)
-                Text("MEDIA UTILITY · 0.1")
+                Text("MEDIA UTILITY · 0.3")
                     .font(.system(size: 9, weight: .medium, design: .monospaced))
             }
             .padding(.top, 18)
@@ -136,6 +137,7 @@ private struct TitleBar: View {
         switch model.section {
         case .download: return "One link in; a visible command out."
         case .music: return "Choose what album downloads should produce."
+        case .themes: return "Change the desk without changing what its buttons do."
         case .setup: return "Detect, install, and update the tools MediaDock orchestrates."
         case .cookies: return "Account access stays in your browser or in a file you choose."
         case .troubleshooting: return "Start with versions, then isolate account and network failures."

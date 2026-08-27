@@ -280,6 +280,54 @@ struct MusicView: View {
     }
 }
 
+struct ThemesView: View {
+    @EnvironmentObject private var model: AppModel
+
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 12) {
+                RetroPanel(title: "Interactive themes") {
+                    Text("Themes change colors and borders only. Download, cookie, setup, stop, retry, and folder buttons keep the same behavior.")
+                        .font(.retro(11))
+                        .fixedSize(horizontal: false, vertical: true)
+                    ForEach(MediaDockTheme.allCases) { theme in
+                        Button {
+                            model.selectedTheme = theme
+                        } label: {
+                            HStack(spacing: 12) {
+                                Circle()
+                                    .fill(theme.accentColor)
+                                    .frame(width: 16, height: 16)
+                                    .overlay(Circle().stroke(RetroPalette.darkEdge, lineWidth: 1))
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(theme.name)
+                                        .font(.retro(13, weight: .bold))
+                                    Text(theme.description)
+                                        .font(.retro(10))
+                                        .foregroundStyle(RetroPalette.ink.opacity(0.72))
+                                }
+                                Spacer()
+                                if model.selectedTheme == theme {
+                                    Text("ACTIVE")
+                                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                }
+                            }
+                            .padding(10)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(model.selectedTheme == theme ? RetroPalette.paper : RetroPalette.chrome)
+                            .raisedBorder(emphasized: model.selectedTheme == theme)
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(RetroPalette.ink)
+                    }
+                }
+            }
+            .padding(14)
+        }
+        .background(RetroPalette.desktop)
+    }
+}
+
 struct SetupView: View {
     @EnvironmentObject private var model: AppModel
 
@@ -396,13 +444,15 @@ struct CookiesView: View {
                 RetroPanel(title: "Apple Music · cookies.txt") {
                     StepLine(number: 1, text: "Open music.apple.com in a browser and sign in to the Apple Music subscription you intend to use.")
                     StepLine(number: 2, text: "Export only after you are signed in. Gamdl requires Netscape/Mozilla cookie-file format; use the export method linked in Gamdl's own instructions.")
-                    StepLine(number: 3, text: "Choose the resulting cookies.txt here. MediaDock remembers the path but never reads, copies, previews, uploads, or logs its contents.")
+                    StepLine(number: 3, text: "Use Import locally below. MediaDock copies the selected export into its private credentials folder, then passes that fixed local path to Gamdl each time. This avoids asking you to relocate the file manually.")
 
                     HStack {
                         Button("Open Apple Music") { model.openWebPage("https://music.apple.com") }
                             .buttonStyle(RetroButtonStyle())
                         Button("Open Gamdl instructions") { model.openWebPage("https://github.com/glomatico/gamdl#-prerequisites") }
                             .buttonStyle(RetroButtonStyle())
+                        Button("Import locally…") { model.importAppleCookies() }
+                            .buttonStyle(RetroButtonStyle(prominent: true))
                         Spacer()
                     }
 
@@ -415,14 +465,18 @@ struct CookiesView: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(8)
                             .insetBorder()
-                        Button("Choose…") { model.chooseAppleCookies() }
+                        Button("Choose external…") { model.chooseAppleCookies() }
                             .buttonStyle(RetroButtonStyle(prominent: true))
-                        Button("Forget path") { model.appleCookiesPath = "" }
-                            .buttonStyle(RetroButtonStyle())
-                            .disabled(model.appleCookiesPath.isEmpty)
+                        if model.appleCookiesManaged {
+                            Button("Delete local copy") { model.deleteManagedAppleCookies() }
+                                .buttonStyle(RetroButtonStyle())
+                        } else {
+                            Button("Forget path") { model.appleCookiesPath = "" }
+                                .buttonStyle(RetroButtonStyle())
+                        }
                     }
 
-                    Text("Treat cookies.txt like a password. Store it privately, never paste it into a chat or log, and delete it when no longer needed. Signing out of Apple Music invalidates the session but may also require a fresh export later.")
+                    Text("What happens: MediaDock copies only the file you select to ~/Library/Application Support/MediaDock9/credentials/apple-music-cookies.txt, restricts it to your account, and passes that path to Gamdl. The app does not collect passwords or upload the file. Cookies expire or become invalid when you sign out, so you may need to import a fresh export later.")
                         .font(.retro(10))
                         .foregroundStyle(RetroPalette.red)
                         .fixedSize(horizontal: false, vertical: true)
@@ -447,8 +501,8 @@ struct CookiesView: View {
                 }
 
                 RetroPanel(title: "What the app stores") {
-                    PrivacyRow(item: "Stored", detail: "Cookie-file path, selected browser name, output folders, and download-option preferences.")
-                    PrivacyRow(item: "Not stored", detail: "Cookie contents, Apple or Google passwords, tokens copied from logs, or a private command history file.")
+                    PrivacyRow(item: "Stored", detail: "Cookie-file path, selected browser name, output folders, and download-option preferences. If you choose Import locally, the selected cookie export is copied into MediaDock's protected credentials folder.")
+                    PrivacyRow(item: "Not stored", detail: "Passwords, cookies from browsers you did not select, tokens copied from logs, or a private command history file.")
                     PrivacyRow(item: "Visible", detail: "The exact command line, which includes the cookie-file path but never the file's contents.")
                 }
             }
