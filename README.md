@@ -1,8 +1,18 @@
 # MediaDock 9
 
-I was playing around with Codex and decided to make this simpler for anyone who does not want to deal with code and Terminal commands or search through ChatGPT, forums, and Reddit for setup help. So I made MediaDock 9 with an old-school retro Mac interface. Hopefully it works for you.
+## Why I made it
 
-MediaDock 9 is a native macOS front end for `yt-dlp`, `spotdl`, `gamdl`, FFmpeg, Deno, pipx, and Homebrew. It puts those existing command-line tools behind a graphical interface without reimplementing their download or account logic.
+I was playing around with Codex and realized that downloading something simple could turn into a scavenger hunt through Terminal commands, Python packages, browser cookies, ChatGPT answers, forums, and Reddit. I wanted to make that part easier for someone who does not want to spend an afternoon figuring out which command belongs where.
+
+So I made MediaDock 9: a small Mac app with an old-school retro interface where you paste a link, choose what you want, see the command before it runs, watch what is happening, and stop it if something goes wrong. I liked the idea of making a practical utility that feels like an actual little application instead of another anonymous settings page.
+
+MediaDock does not replace the download tools. It gives them a clearer place to live. Underneath, it uses tools such as `yt-dlp`, `spotdl`, `gamdl`, FFmpeg, Deno, pipx, and Homebrew. The app helps find, install, and update those tools, then shows you exactly what it is asking them to do. Nothing is meant to happen invisibly.
+
+Apple Music needs a little extra explanation because it uses browser sign-in sessions. MediaDock can import a `cookies.txt` file or look for the browser profile you choose, as long as you are already signed in to Apple Music there. It does not collect your password, and it does not use the sign-in session from the native Music app. The browser and the Music app are separate things here, which is one of those details that is obvious only after you have already been confused by it.
+
+For album downloads, **One Track, One Album** can combine the tracks into one continuous file while preserving the album order. The themes are there because, honestly, a little retro colour and a few unnecessary-looking borders make this kind of tool more pleasant to use.
+
+I am still learning as I build this, so MediaDock is deliberately transparent. The commands stay visible, the logs stay visible, and the app tries to explain what it is doing instead of pretending that every setup is effortless. Hopefully it gives someone else a less irritating starting point.
 
 The activity console follows the command runner live: running/idle status, current item, progress, controls, and tool output update as the underlying downloader emits them. Music album downloads can optionally run the provider-independent **One Track, One Album** post-processing stage. The app also offers an explicit local Apple Music cookie import and selectable interactive themes.
 
@@ -33,7 +43,7 @@ Use it only for media you are legally entitled and contractually permitted to do
 
 ## Quick start
 
-Download `MediaDock9-0.1.3-App.zip` from the [latest release](https://github.com/aghamorad/MediaDock9/releases/latest), unzip it, and move **MediaDock 9.app** to Applications.
+Download `MediaDock9-0.3.1-App.zip` from the [latest release](https://github.com/aghamorad/MediaDock9/releases/latest), unzip it, and move **MediaDock 9.app** to Applications.
 
 The app was built for Apple Silicon. Because it is an ad-hoc-signed development build rather than a notarized public release, macOS may initially decline to open it on a different Mac. You can inspect the source and build it locally instead:
 
@@ -183,9 +193,9 @@ When enabled, MediaDock passes the selected browser name to yt-dlp’s `--cookie
 
 ### Apple Music
 
-Gamdl currently requires an active Apple Music subscription and a Netscape/Mozilla-format browser cookie export in its ordinary cookie-based mode. MediaDock stores only the selected file path in `UserDefaults`.
+Gamdl currently requires an active Apple Music subscription and a Netscape/Mozilla-format browser cookie export in its ordinary cookie-based mode. MediaDock can either import an export you already made or use its local extraction button to find the selected browser's actual profile and ask yt-dlp to create the export for you. The browser must already be signed in at `music.apple.com`.
 
-The Cookies screen can import that export into `~/Library/Application Support/MediaDock9/credentials/apple-music-cookies.txt`. The copy is created with user-only permissions and the app passes its fixed path to Gamdl on each session. MediaDock does not automatically harvest browser databases or collect passwords. YouTube continues to use yt-dlp's explicit browser-cookie option.
+The Cookies screen can import that export into `~/Library/Application Support/MediaDock9/credentials/apple-music-cookies.txt`. The copy is created with user-only permissions and the app passes its fixed path to Gamdl on each session. MediaDock does not collect passwords, and it does not use the sign-in session from the native Music app. YouTube continues to use yt-dlp's explicit browser-cookie option.
 
 ### One Track, One Album
 
@@ -194,7 +204,6 @@ For audio album downloads, enable **One Track, One Album** on the Download scree
 MediaDock does not:
 
 - read or validate cookie-file contents;
-- copy the file into Application Support;
 - print it to the command log;
 - upload it;
 - store Apple or Google passwords.
