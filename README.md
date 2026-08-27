@@ -37,7 +37,7 @@ Use it only for media you are legally entitled and contractually permitted to do
 
 ## Quick start
 
-Download `MediaDock9-0.3.1-App.zip` from the [latest release](https://github.com/aghamorad/MediaDock9/releases/latest), unzip it, and move **MediaDock 9.app** to Applications.
+Download `MediaDock9-0.3.2-App.zip` from the [latest release](https://github.com/aghamorad/MediaDock9/releases/latest), unzip it, and move **MediaDock 9.app** to Applications.
 
 The app was built for Apple Silicon. Because it is an ad-hoc-signed development build rather than a notarized public release, macOS may initially decline to open it on a different Mac. You can inspect the source and build it locally instead:
 
