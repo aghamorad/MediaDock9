@@ -5,6 +5,7 @@ import SwiftUI
 @main
 struct MediaDock9App: App {
     @StateObject private var model = AppModel()
+    @Environment(\.openWindow) private var openWindow
 
     init() {
         if CommandLine.arguments.contains("--self-test") {
@@ -22,7 +23,7 @@ struct MediaDock9App: App {
     }
 
     var body: some Scene {
-        WindowGroup("MediaDock 9") {
+        WindowGroup("MediaDock 9", id: "main") {
             RootView()
                 .environmentObject(model)
                 .frame(minWidth: 980, minHeight: 760)
@@ -31,7 +32,10 @@ struct MediaDock9App: App {
         .windowStyle(.hiddenTitleBar)
         .windowResizability(.contentMinSize)
         .commands {
-            CommandGroup(replacing: .newItem) { }
+            CommandGroup(replacing: .newItem) {
+                Button("Open MediaDock Window") { openWindow(id: "main") }
+                    .keyboardShortcut("n", modifiers: .command)
+            }
             CommandMenu("MediaDock") {
                 Button("Rescan Dependencies") { model.refreshDependencies() }
                     .keyboardShortcut("r", modifiers: [.command, .shift])
