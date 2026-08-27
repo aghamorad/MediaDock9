@@ -19,7 +19,7 @@ final class AlbumMergeServiceTests: XCTestCase {
 
     func testThemeCatalogIsInteractiveAndStable() {
         XCTAssertEqual(MediaDockTheme.allCases.count, 3)
-        XCTAssertEqual(MediaDockTheme.allCases.map(\.name), ["Classic Platinum", "Amber Terminal", "Ocean Desk"])
+        XCTAssertEqual(MediaDockTheme.allCases.map(\.name), ["Macintosh 1999", "DOS Midnight", "Cyberdeck 2088"])
     }
 
     func testCookieStoreUsesPrivateManagedLocation() {

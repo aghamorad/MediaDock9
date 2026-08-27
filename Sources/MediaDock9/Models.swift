@@ -30,16 +30,16 @@ enum MediaDockTheme: String, CaseIterable, Identifiable {
     var id: String { rawValue }
     var name: String {
         switch self {
-        case .platinum: return "Classic Platinum"
-        case .amberTerminal: return "Amber Terminal"
-        case .oceanDesk: return "Ocean Desk"
+        case .platinum: return "Macintosh 1999"
+        case .amberTerminal: return "DOS Midnight"
+        case .oceanDesk: return "Cyberdeck 2088"
         }
     }
     var description: String {
         switch self {
-        case .platinum: return "The original retro Mac palette."
-        case .amberTerminal: return "Warm black, copper, and terminal amber."
-        case .oceanDesk: return "Deep blue panels with clear cyan actions."
+        case .platinum: return "A complete platinum writing-machine palette."
+        case .amberTerminal: return "A green-on-black terminal desk."
+        case .oceanDesk: return "A neon city wired into the interface."
         }
     }
 }
