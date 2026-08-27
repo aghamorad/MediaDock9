@@ -1,8 +1,12 @@
 # MediaDock 9
 
-I was playing around with Codex and decided to make this simpler for anyone who does not want to deal with code and Terminal commands or search through ChatGPT, forums, and Reddit for setup help. So I made MediaDock 9 with an old-school retro Mac interface. Hopefully it works for you.
+## Why I made it
 
-MediaDock 9 is a native macOS front end for `yt-dlp`, `spotdl`, `gamdl`, FFmpeg, Deno, pipx, and Homebrew. It puts those existing command-line tools behind a graphical interface without reimplementing their download or account logic.
+I was playing around with Codex and realized that downloading something simple could turn into a scavenger hunt through Terminal commands, Python packages, browser cookies, ChatGPT answers, forums, and Reddit. I wanted to make that part easier for someone who does not want to spend an afternoon figuring out which command belongs where.
+
+So I made MediaDock 9: a small Mac app with an old-school retro interface where you paste a link, choose what you want, see the command before it runs, watch what is happening, and stop it if something goes wrong. I liked the idea of making a practical utility that feels like an actual little application instead of another anonymous settings page.
+
+MediaDock 9 is a native macOS front end for `yt-dlp`, `spotdl`, `gamdl`, FFmpeg, Deno, pipx, and Homebrew. It gives those existing command-line tools a clearer place to live without reimplementing their download or account logic.
 
 The activity console follows the command runner live: running/idle status, current item, progress, controls, and tool output update as the underlying downloader emits them.
 
@@ -33,7 +37,7 @@ Use it only for media you are legally entitled and contractually permitted to do
 
 ## Quick start
 
-Download `MediaDock9-0.1.3-App.zip` from the [latest release](https://github.com/aghamorad/MediaDock9/releases/latest), unzip it, and move **MediaDock 9.app** to Applications.
+Download `MediaDock9-0.3.1-App.zip` from the [latest release](https://github.com/aghamorad/MediaDock9/releases/latest), unzip it, and move **MediaDock 9.app** to Applications.
 
 The app was built for Apple Silicon. Because it is an ad-hoc-signed development build rather than a notarized public release, macOS may initially decline to open it on a different Mac. You can inspect the source and build it locally instead:
 
