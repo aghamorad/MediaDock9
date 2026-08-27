@@ -483,7 +483,7 @@ struct CookiesView: View {
                 }
 
                 RetroPanel(title: "Apple Music · one-click local extraction") {
-                    Text("For beginners: sign in to music.apple.com in the browser profile you choose below, leave that browser available, then press Extract. MediaDock asks yt-dlp to copy the browser's cookies into its own protected file and uses that file for future Gamdl sessions.")
+                    Text("For beginners: sign in to music.apple.com in the browser profile you choose below, then press Extract. MediaDock finds that browser's actual profile and asks yt-dlp to copy its cookies into a protected local file for future Gamdl sessions. If you use Chrome, Chromium, Brave, Edge, or Vivaldi, quit the browser first so macOS releases its cookie database.")
                         .font(.retro(11))
                         .fixedSize(horizontal: false, vertical: true)
                     PropertyRow(label: "Signed-in browser") {

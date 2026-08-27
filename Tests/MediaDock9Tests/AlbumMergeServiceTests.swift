@@ -27,6 +27,26 @@ final class AlbumMergeServiceTests: XCTestCase {
         XCTAssertTrue(CookieImportStore.isManagedPath(CookieImportStore.appleMusicCookieURL.path))
     }
 
+    func testBrowserSpecifierUsesDetectedChromiumProfile() throws {
+        let home = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let profile = home.appendingPathComponent("Library/Application Support/Google/Chrome/Profile 1/Network", isDirectory: true)
+        try FileManager.default.createDirectory(at: profile, withIntermediateDirectories: true)
+        try Data().write(to: profile.appendingPathComponent("Cookies"))
+        defer { try? FileManager.default.removeItem(at: home) }
+
+        let specifier = try CookieImportStore.browserSpecifier(for: .chrome, homeDirectory: home)
+        XCTAssertEqual(specifier, "chrome:" + profile.deletingLastPathComponent().path)
+    }
+
+    func testBrowserSpecifierExplainsMissingProfile() {
+        let home = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        XCTAssertThrowsError(try CookieImportStore.browserSpecifier(for: .chromium, homeDirectory: home)) { error in
+            let message = (error as? LocalizedError)?.errorDescription ?? ""
+            XCTAssertTrue(message.contains("Chromium"))
+            XCTAssertTrue(message.contains("Sign in to music.apple.com"))
+        }
+    }
+
     @MainActor
     func testPreferenceMapsToSharedOptions() {
         let defaults = UserDefaults(suiteName: "MediaDock9Tests-\(UUID().uuidString)")!

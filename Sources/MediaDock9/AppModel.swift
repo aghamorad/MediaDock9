@@ -145,7 +145,8 @@ final class AppModel: ObservableObject {
         subtitleLanguages = defaults.string(forKey: Keys.subtitleLanguages) ?? "en.*,en"
         useYouTubeCookies = defaults.object(forKey: Keys.useYouTubeCookies) as? Bool ?? false
         browserChoice = BrowserChoice(rawValue: defaults.string(forKey: Keys.browserChoice) ?? "") ?? .safari
-        appleCookieBrowser = BrowserChoice(rawValue: defaults.string(forKey: Keys.appleCookieBrowser) ?? "") ?? .chrome
+        let savedAppleCookieBrowser = BrowserChoice(rawValue: defaults.string(forKey: Keys.appleCookieBrowser) ?? "")
+        appleCookieBrowser = savedAppleCookieBrowser ?? CookieImportStore.availableBrowsers().first ?? .chrome
         let savedAppleCookiesPath = defaults.string(forKey: Keys.appleCookiesPath) ?? ""
         appleCookiesPath = savedAppleCookiesPath
         youtubeFolder = defaults.string(forKey: Keys.youtubeFolder) ?? "\(downloads)/YouTube"
@@ -284,12 +285,13 @@ final class AppModel: ObservableObject {
         }
         do {
             let destination = try CookieImportStore.extractionURL()
+            let browserSpecifier = try CookieImportStore.browserSpecifier(for: appleCookieBrowser)
             pendingCookieExtractionURL = destination
             runner.run([CommandSpec(
                 name: "Extract Apple Music cookies from \(appleCookieBrowser.label)",
                 executable: ytDlp,
-                arguments: ["--cookies-from-browser", appleCookieBrowser.rawValue, "--cookies", destination.path],
-                explanation: "yt-dlp reads the selected browser profile and writes a Netscape cookie export for MediaDock. The browser must already be signed in at music.apple.com. This may trigger macOS privacy or Keychain approval and may export cookies for more than one site; do not share the resulting file."
+                arguments: ["--cookies-from-browser", browserSpecifier, "--cookies", destination.path],
+                explanation: "MediaDock found the selected browser profile and asks yt-dlp to write a Netscape cookie export into MediaDock's protected local storage. The browser must already be signed in at music.apple.com. This may trigger macOS privacy or Keychain approval and may export cookies for more than one site; do not share the resulting file."
             )])
         } catch {
             alertMessage = error.localizedDescription
