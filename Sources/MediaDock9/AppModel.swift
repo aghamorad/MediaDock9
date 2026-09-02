@@ -53,7 +53,13 @@ final class AppModel: ObservableObject {
         didSet { defaults.set(browserChoice.rawValue, forKey: Keys.browserChoice) }
     }
     @Published var appleCookieBrowser: BrowserChoice {
-        didSet { defaults.set(appleCookieBrowser.rawValue, forKey: Keys.appleCookieBrowser) }
+        didSet {
+            defaults.set(appleCookieBrowser.rawValue, forKey: Keys.appleCookieBrowser)
+            if oldValue != appleCookieBrowser, !appleCookieProfilePath.isEmpty { appleCookieProfilePath = "" }
+        }
+    }
+    @Published var appleCookieProfilePath: String {
+        didSet { defaults.set(appleCookieProfilePath, forKey: Keys.appleCookieProfilePath) }
     }
     @Published var appleCookiesPath: String {
         didSet {
@@ -118,6 +124,7 @@ final class AppModel: ObservableObject {
         static let useYouTubeCookies = "useYouTubeCookies"
         static let browserChoice = "browserChoice"
         static let appleCookieBrowser = "appleCookieBrowser"
+        static let appleCookieProfilePath = "appleCookieProfilePath"
         static let appleCookiesPath = "appleCookiesPath"
         static let youtubeFolder = "youtubeFolder"
         static let spotifyFolder = "spotifyFolder"
@@ -147,6 +154,7 @@ final class AppModel: ObservableObject {
         browserChoice = BrowserChoice(rawValue: defaults.string(forKey: Keys.browserChoice) ?? "") ?? .safari
         let savedAppleCookieBrowser = BrowserChoice(rawValue: defaults.string(forKey: Keys.appleCookieBrowser) ?? "")
         appleCookieBrowser = savedAppleCookieBrowser ?? CookieImportStore.availableBrowsers().first ?? .chrome
+        appleCookieProfilePath = defaults.string(forKey: Keys.appleCookieProfilePath) ?? ""
         let savedAppleCookiesPath = defaults.string(forKey: Keys.appleCookiesPath) ?? ""
         appleCookiesPath = savedAppleCookiesPath
         youtubeFolder = defaults.string(forKey: Keys.youtubeFolder) ?? "\(downloads)/YouTube"
@@ -173,8 +181,7 @@ final class AppModel: ObservableObject {
                 self?.finishCookieExtraction(success: success, temporaryURL: extractionURL)
                 return
             }
-            if success { self?.beginAlbumPostProcessingIfNeeded() }
-            else { self?.pendingAlbumRoot = nil; self?.pendingAlbumBeforePaths = [] }
+            self?.finishAlbumDownload(success: success)
         }
     }
 
@@ -218,14 +225,18 @@ final class AppModel: ObservableObject {
     }
 
     var isAlbumDownload: Bool {
-        guard playlistMode, let source = effectiveSource,
+        guard let source = effectiveSource,
               let url = URL(string: urlText.trimmingCharacters(in: .whitespacesAndNewlines)) else { return false }
         if source == .youtube && mediaKind != .audio { return false }
         let path = url.path.lowercased()
         switch source {
-        case .youtube: return url.query?.split(separator: "&").contains(where: { $0.hasPrefix("list=") }) == true
-        case .spotify: return path.contains("/album/") || path.contains("/playlist/")
-        case .appleMusic: return path.contains("/album/")
+        case .youtube:
+            return playlistMode && url.query?.split(separator: "&").contains(where: { $0.hasPrefix("list=") }) == true
+        case .spotify:
+            return path.contains("/album/") || (playlistMode && path.contains("/playlist/"))
+        case .appleMusic:
+            let isSingleSong = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.contains(where: { $0.name == "i" && !($0.value ?? "").isEmpty }) == true
+            return path.contains("/album/") && !isSingleSong
         }
     }
 
@@ -265,9 +276,10 @@ final class AppModel: ObservableObject {
             _ = try DownloadDirectory.prepare(at: root)
             try prepareDownloadSupportFiles(for: source, root: root)
             albumMergeService.resetResult()
+            lastAlbumMergeRequest = nil
             if isAlbumDownload && oneTrackOneAlbum {
                 pendingAlbumRoot = root
-                pendingAlbumBeforePaths = Set(AlbumMergeService.discoverAudioTracks(in: root).map(\.standardizedFileURL.path))
+                pendingAlbumBeforePaths = Set(AlbumMergeService.discoverAudioTracksRecursively(in: root).map(\.standardizedFileURL.path))
             } else {
                 pendingAlbumRoot = nil
                 pendingAlbumBeforePaths = []
@@ -297,7 +309,9 @@ final class AppModel: ObservableObject {
         }
         do {
             let destination = try CookieImportStore.extractionURL()
-            let browserSpecifier = try CookieImportStore.browserSpecifier(for: appleCookieBrowser)
+            let browserSpecifier = appleCookieProfilePath.isEmpty
+                ? try CookieImportStore.browserSpecifier(for: appleCookieBrowser)
+                : try CookieImportStore.browserSpecifier(for: appleCookieBrowser, profileDirectory: URL(fileURLWithPath: appleCookieProfilePath, isDirectory: true))
             pendingCookieExtractionURL = destination
             runner.run([CommandSpec(
                 name: "Extract Apple Music cookies from \(appleCookieBrowser.label)",
@@ -345,9 +359,22 @@ final class AppModel: ObservableObject {
         NSWorkspace.shared.open(URL(fileURLWithPath: path))
     }
 
+    private func finishAlbumDownload(success: Bool) {
+        guard pendingAlbumRoot != nil else { return }
+        guard success else {
+            pendingAlbumRoot = nil
+            pendingAlbumBeforePaths = []
+            runner.record("[OneTrackOneAlbum] The downloader did not finish cleanly, so MediaDock preserved the separate tracks and did not merge a possibly incomplete album.", kind: .error)
+            albumMergeService.recordFailure("The album downloader did not finish cleanly. Your individual tracks were preserved; fix the download error, then download again or use Retry after a completed album download.")
+            return
+        }
+        beginAlbumPostProcessingIfNeeded()
+    }
+
     private func beginAlbumPostProcessingIfNeeded() {
         guard let root = pendingAlbumRoot else { return }
         pendingAlbumRoot = nil
+        defer { pendingAlbumBeforePaths = [] }
         let ffmpeg = dependency(.ffmpeg)?.path ?? RuntimeEnvironment.locate("ffmpeg")
         let ffprobe: String? = {
             if let ffmpeg {
@@ -431,6 +458,36 @@ final class AppModel: ObservableObject {
         appleCookiesPath = path
     }
 
+    func detectAppleCookieBrowser() {
+        guard let browser = CookieImportStore.firstAvailableBrowser() else {
+            alertMessage = "MediaDock could not find an accessible browser cookie profile on this Mac. Sign in at music.apple.com, close that browser once, and try again. If the browser is using a separate profile, choose that profile folder below. A browser extension can export its own file, but MediaDock cannot read a session that macOS does not expose as a local browser profile."
+            return
+        }
+        appleCookieBrowser = browser
+        appleCookieProfilePath = ""
+        runner.record("Cookie extraction will use the detected \(browser.label) profile.", kind: .info)
+    }
+
+    func chooseAppleCookieProfile() {
+        let panel = NSOpenPanel()
+        panel.title = "Choose the signed-in browser profile"
+        panel.message = "Choose the profile folder that contains Cookies or Network/Cookies. MediaDock stores only this folder path and asks yt-dlp to create a local cookie export."
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.canCreateDirectories = false
+        panel.allowsMultipleSelection = false
+        if appleCookieBrowser != .safari {
+            panel.directoryURL = CookieImportStore.browserRoot(for: appleCookieBrowser)
+        }
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do {
+            _ = try CookieImportStore.browserSpecifier(for: appleCookieBrowser, profileDirectory: url)
+            appleCookieProfilePath = url.standardizedFileURL.path
+        } catch {
+            alertMessage = error.localizedDescription
+        }
+    }
+
     func importAppleCookies() {
         let panel = NSOpenPanel()
         panel.title = "Import Apple Music cookies.txt"
@@ -476,13 +533,16 @@ final class AppModel: ObservableObject {
 
     func openAppleMusicInBrowser() {
         guard let url = URL(string: "https://music.apple.com") else { return }
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
-        process.arguments = ["-a", appleCookieBrowser.applicationName, url.absoluteString]
-        do {
-            try process.run()
-        } catch {
-            alertMessage = "MediaDock could not open \(appleCookieBrowser.label): \(error.localizedDescription)"
+        guard let applicationURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: appleCookieBrowser.bundleIdentifier) else {
+            alertMessage = "MediaDock could not find \(appleCookieBrowser.label). Choose the browser where you signed in, then install or open that browser once."
+            return
+        }
+        let browserLabel = appleCookieBrowser.label
+        NSWorkspace.shared.open([url], withApplicationAt: applicationURL, configuration: NSWorkspace.OpenConfiguration()) { [weak self] _, error in
+            guard let error else { return }
+            Task { @MainActor [weak self] in
+                self?.alertMessage = "MediaDock could not open \(browserLabel): \(error.localizedDescription)"
+            }
         }
     }
 

@@ -59,6 +59,17 @@ final class AlbumMergeServiceTests: XCTestCase {
         XCTAssertEqual(specifier, "chrome:" + profile.deletingLastPathComponent().path)
     }
 
+    func testBrowserSpecifierUsesChosenChromiumProfile() throws {
+        let home = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let profile = home.appendingPathComponent("Custom Profile/Network", isDirectory: true)
+        try FileManager.default.createDirectory(at: profile, withIntermediateDirectories: true)
+        try Data().write(to: profile.appendingPathComponent("Cookies"))
+        defer { try? FileManager.default.removeItem(at: home) }
+
+        let selected = profile.deletingLastPathComponent()
+        XCTAssertEqual(try CookieImportStore.browserSpecifier(for: .chrome, profileDirectory: selected), "chrome:" + selected.path)
+    }
+
     func testBrowserSpecifierExplainsMissingProfile() {
         let home = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         XCTAssertThrowsError(try CookieImportStore.browserSpecifier(for: .chromium, homeDirectory: home)) { error in
@@ -79,6 +90,43 @@ final class AlbumMergeServiceTests: XCTestCase {
         XCTAssertTrue(model.keepIndividualTracks)
         model.albumDownloadPreference = .individualTracks
         XCTAssertFalse(model.oneTrackOneAlbum)
+    }
+
+    @MainActor
+    func testAppleAlbumDoesNotRequireBatchModeToMerge() {
+        let defaults = UserDefaults(suiteName: "MediaDock9Tests-\(UUID().uuidString)")!
+        let model = AppModel(defaults: defaults)
+        model.sourceChoice = .appleMusic
+        model.playlistMode = false
+        model.urlText = "https://music.apple.com/us/album/example/123"
+        XCTAssertTrue(model.isAlbumDownload)
+    }
+
+    @MainActor
+    func testAppleMusicSingleSongDoesNotOfferAlbumMerge() {
+        let defaults = UserDefaults(suiteName: "MediaDock9Tests-\(UUID().uuidString)")!
+        let model = AppModel(defaults: defaults)
+        model.sourceChoice = .appleMusic
+        model.urlText = "https://music.apple.com/us/album/example/123?i=456"
+        XCTAssertFalse(model.isAlbumDownload)
+    }
+
+    func testRecursiveSnapshotAndAlbumResolutionFindNestedTracks() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let album = root.appendingPathComponent("Artist/Album", isDirectory: true)
+        try FileManager.default.createDirectory(at: album, withIntermediateDirectories: true)
+        try Data("track".utf8).write(to: album.appendingPathComponent("01 Track.m4a"))
+        try Data("track".utf8).write(to: album.appendingPathComponent("02 Track.m4a"))
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        XCTAssertEqual(AlbumMergeService.discoverAudioTracksRecursively(in: root).count, 2)
+        XCTAssertEqual(AlbumMergeService.resolveAlbumDirectory(in: root)?.standardizedFileURL, album.standardizedFileURL)
+    }
+
+    func testTrackTagProbeIncludesDiscAndTrackNumbers() {
+        let args = AlbumMergeService.tagProbeArguments(for: URL(fileURLWithPath: "/tmp/01 Track.m4a"))
+        XCTAssertTrue(args.joined(separator: " ").contains("discnumber"))
+        XCTAssertTrue(args.joined(separator: " ").contains("tracknumber"))
     }
 
     @MainActor

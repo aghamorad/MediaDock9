@@ -106,6 +106,11 @@ enum SelfCheck {
             let model = AppModel(defaults: defaults)
             model.sourceChoice = .appleMusic
             model.urlText = "https://music.apple.com/us/album/example/123"
+            model.playlistMode = false
+            check(model.isAlbumDownload, "Apple Music album merge is independent of batch mode", into: &failures)
+            model.urlText = "https://music.apple.com/us/album/example/123?i=456"
+            check(!model.isAlbumDownload, "Apple Music single songs skip album merge", into: &failures)
+            model.urlText = "https://music.apple.com/us/album/example/123"
             model.appleCookiesPath = "/private/example/cookies.txt"
             let command = try model.makeDownloadCommand(requireInstalledTool: false)
             check(command.executable == "gamdl", "Gamdl executable", into: &failures)
@@ -123,6 +128,9 @@ enum SelfCheck {
         } catch {
             failures.append("Apple Music command builder threw: \(error.localizedDescription)")
         }
+
+        let tagArguments = AlbumMergeService.tagProbeArguments(for: URL(fileURLWithPath: "/tmp/01 Track.m4a"))
+        check(tagArguments.joined(separator: " ").contains("discnumber") && tagArguments.joined(separator: " ").contains("tracknumber"), "Album ordering requests disc and track tags", into: &failures)
 
         return failures
     }

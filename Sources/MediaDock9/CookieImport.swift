@@ -18,12 +18,15 @@ enum CookieImportError: LocalizedError {
 
 enum BrowserCookieError: LocalizedError {
     case databaseNotFound(browser: BrowserChoice, searched: [URL])
+    case profileNotUsable(browser: BrowserChoice, profile: URL)
 
     var errorDescription: String? {
         switch self {
         case let .databaseNotFound(browser, searched):
             let locations = searched.map(\.path).joined(separator: "\n")
-            return "MediaDock could not find a " + browser.label + " cookie database. It searched:\n" + locations + "\n\nSign in to music.apple.com in that browser, open it once, then try Extract again. If you use a different browser, select it first. Chromium-family browsers may need to be quit before extraction so macOS can release the database."
+            return "MediaDock could not find a " + browser.label + " cookie database. It searched:\n" + locations + "\n\nSign in to music.apple.com in that browser, open it once, then quit that browser and try Extract again. If this browser keeps its session in a different profile, use Choose browser profile. MediaDock cannot extract a session from a browser extension or an open web page when macOS does not expose a local cookie database."
+        case let .profileNotUsable(browser, profile):
+            return "The selected " + browser.label + " profile does not contain a usable cookie database:\n" + profile.path + "\n\nChoose the profile folder that contains Cookies or Network/Cookies, then try again."
         }
     }
 }
@@ -80,15 +83,35 @@ enum CookieImportStore {
             let profile = database.deletingLastPathComponent().lastPathComponent == "Network"
                 ? database.deletingLastPathComponent().deletingLastPathComponent()
                 : database.deletingLastPathComponent()
-            return browser.rawValue + ":" + profile.path
+            return try browserSpecifier(for: browser, profileDirectory: profile)
         }
+    }
+
+    /// Uses a profile selected by the user only after confirming that it is a real
+    /// browser profile.  The app stores the folder path, never its cookie data.
+    static func browserSpecifier(for browser: BrowserChoice, profileDirectory: URL) throws -> String {
+        guard browser != .safari else { return browser.rawValue }
+        let fm = FileManager.default
+        let hasCookieDatabase: Bool
+        if browser == .firefox {
+            hasCookieDatabase = fm.fileExists(atPath: profileDirectory.appendingPathComponent("cookies.sqlite").path)
+        } else {
+            hasCookieDatabase = fm.fileExists(atPath: profileDirectory.appendingPathComponent("Cookies").path)
+                || fm.fileExists(atPath: profileDirectory.appendingPathComponent("Network/Cookies").path)
+        }
+        guard hasCookieDatabase else { throw BrowserCookieError.profileNotUsable(browser: browser, profile: profileDirectory) }
+        return browser.rawValue + ":" + profileDirectory.standardizedFileURL.path
+    }
+
+    static func firstAvailableBrowser() -> BrowserChoice? {
+        BrowserChoice.allCases.first { (try? browserSpecifier(for: $0)) != nil }
     }
 
     static func availableBrowsers(homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser) -> [BrowserChoice] {
         BrowserChoice.allCases.filter { (try? browserSpecifier(for: $0, homeDirectory: homeDirectory)) != nil }
     }
 
-    private static func chromiumRoot(for browser: BrowserChoice, homeDirectory: URL) -> URL {
+    static func browserRoot(for browser: BrowserChoice, homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser) -> URL {
         let support = homeDirectory.appendingPathComponent("Library/Application Support", isDirectory: true)
         switch browser {
         case .chrome: return support.appendingPathComponent("Google/Chrome", isDirectory: true)
@@ -98,6 +121,10 @@ enum CookieImportStore {
         case .vivaldi: return support.appendingPathComponent("Vivaldi", isDirectory: true)
         default: return support.appendingPathComponent(browser.rawValue, isDirectory: true)
         }
+    }
+
+    private static func chromiumRoot(for browser: BrowserChoice, homeDirectory: URL) -> URL {
+        browserRoot(for: browser, homeDirectory: homeDirectory)
     }
 
     private static func modificationDate(of url: URL, fileManager: FileManager) -> Date {

@@ -2,10 +2,23 @@ import AppKit
 import Darwin
 import SwiftUI
 
+@MainActor
+final class MediaDockApplicationDelegate: NSObject, NSApplicationDelegate {
+    var reopenMainWindow: (() -> Void)?
+
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        guard !flag else { return true }
+        reopenMainWindow?()
+        NSApp.activate(ignoringOtherApps: true)
+        return true
+    }
+}
+
 @main
 struct MediaDock9App: App {
     @StateObject private var model = AppModel()
     @Environment(\.openWindow) private var openWindow
+    @NSApplicationDelegateAdaptor(MediaDockApplicationDelegate.self) private var appDelegate
 
     init() {
         if CommandLine.arguments.contains("--self-test") {
@@ -28,6 +41,11 @@ struct MediaDock9App: App {
                 .environmentObject(model)
                 .frame(minWidth: 980, minHeight: 760)
                 .preferredColorScheme(.light)
+                .onAppear {
+                    appDelegate.reopenMainWindow = {
+                        openWindow(id: "main")
+                    }
+                }
         }
         .windowStyle(.hiddenTitleBar)
         .windowResizability(.contentMinSize)

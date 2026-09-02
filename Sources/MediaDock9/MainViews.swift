@@ -194,7 +194,7 @@ struct DownloadView: View {
     }
 
     private func albumResultPanel(_ result: AlbumMergeResult) -> some View {
-        RetroPanel(title: result.success ? "One Track, One Album complete" : "Album downloaded") {
+        RetroPanel(title: result.success ? "One Track, One Album complete" : (model.lastAlbumMergeRequest == nil ? "Album download needs attention" : "Album downloaded")) {
             if result.success {
                 Text("Downloaded and merged")
                     .font(.retro(13, weight: .bold))
@@ -210,8 +210,12 @@ struct DownloadView: View {
                     .foregroundStyle(RetroPalette.red)
                 if let error = result.error { Text(error).font(.retro(10)) }
                 HStack {
-                    Button("Retry") { model.retryAlbumMerge() }.buttonStyle(RetroButtonStyle(prominent: true))
-                    Button("Open Folder") { model.revealAlbumFolder() }.buttonStyle(RetroButtonStyle())
+                    if model.lastAlbumMergeRequest != nil {
+                        Button("Retry") { model.retryAlbumMerge() }.buttonStyle(RetroButtonStyle(prominent: true))
+                        Button("Open Folder") { model.revealAlbumFolder() }.buttonStyle(RetroButtonStyle())
+                    } else {
+                        Button("Open Downloads") { model.revealOutputFolder() }.buttonStyle(RetroButtonStyle())
+                    }
                 }
             }
         }
@@ -483,7 +487,7 @@ struct CookiesView: View {
                 }
 
                 RetroPanel(title: "Apple Music · one-click local extraction") {
-                    Text("For beginners: sign in to music.apple.com in the browser profile you choose below, then press Extract. MediaDock finds that browser's actual profile and asks yt-dlp to copy its cookies into a protected local file for future Gamdl sessions. If you use Chrome, Chromium, Brave, Edge, or Vivaldi, quit the browser first so macOS releases its cookie database.")
+                    Text("Sign in to music.apple.com in the browser you choose below, then press Extract. MediaDock finds its local profile and asks yt-dlp to make a protected local cookie file for future Gamdl sessions. For Chrome-family browsers, close the browser once before extracting so macOS can release its cookie database.")
                         .font(.retro(11))
                         .fixedSize(horizontal: false, vertical: true)
                     PropertyRow(label: "Signed-in browser") {
@@ -492,11 +496,28 @@ struct CookiesView: View {
                         }
                         .labelsHidden()
                         .frame(width: 180)
+                        Button("Find my browser") { model.detectAppleCookieBrowser() }
+                            .buttonStyle(RetroButtonStyle())
                         Button("Extract from browser") { model.extractAppleCookiesFromBrowser() }
                             .buttonStyle(RetroButtonStyle(prominent: true))
                             .disabled(model.isBusy)
                     }
-                    Text("This is a local export, not a login. The browser must already be signed in. yt-dlp may need macOS permission to read the selected profile. Cookie exports can contain sessions for multiple sites, so keep the file private and use a browser profile you trust.")
+                    HStack(spacing: 8) {
+                        Text(model.appleCookieProfilePath.isEmpty ? "Profile: automatic detection" : "Profile: \(model.appleCookieProfilePath)")
+                            .font(.system(size: 10, design: .monospaced))
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(8)
+                            .insetBorder()
+                        Button("Choose browser profile…") { model.chooseAppleCookieProfile() }
+                            .buttonStyle(RetroButtonStyle())
+                        if !model.appleCookieProfilePath.isEmpty {
+                            Button("Use automatic") { model.appleCookieProfilePath = "" }
+                                .buttonStyle(RetroButtonStyle())
+                        }
+                    }
+                    Text("This is a local export, not a login. The browser must already be signed in. yt-dlp may need macOS permission to read the selected profile. If no local browser profile exists, MediaDock cannot extract a session out of an open page or extension; importing that extension's cookies.txt remains the fallback. Cookie exports can contain sessions for multiple sites, so keep the file private.")
                         .font(.retro(10))
                         .foregroundStyle(RetroPalette.red)
                         .fixedSize(horizontal: false, vertical: true)

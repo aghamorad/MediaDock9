@@ -76,6 +76,24 @@ final class AlbumMergeService: ObservableObject {
         }.sorted { naturalFilenameLess($0.lastPathComponent, $1.lastPathComponent) }
     }
 
+    /// A download destination may contain artist and album folders.  Snapshot the
+    /// complete destination before a download, while still merging only files in
+    /// the resolved album directory.
+    static func discoverAudioTracksRecursively(in directory: URL, excluding outputURL: URL? = nil) -> [URL] {
+        let fm = FileManager.default
+        var directories = [directory]
+        if let enumerator = fm.enumerator(at: directory, includingPropertiesForKeys: [.isDirectoryKey], options: [.skipsHiddenFiles]) {
+            for case let url as URL in enumerator {
+                if (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true {
+                    directories.append(url)
+                }
+            }
+        }
+        return directories
+            .flatMap { discoverAudioTracks(in: $0, excluding: outputURL) }
+            .sorted { naturalFilenameLess($0.path, $1.path) }
+    }
+
     static func naturalFilenameLess(_ lhs: String, _ rhs: String) -> Bool {
         func chunks(_ value: String) -> [String] {
             var result: [String] = []
@@ -109,8 +127,12 @@ final class AlbumMergeService: ObservableObject {
     static func resolveAlbumDirectory(in outputRoot: URL, beforePaths: Set<String> = []) -> URL? {
         let fm = FileManager.default
         var candidates: [(URL, Int, Date)] = []
-        guard let enumerator = fm.enumerator(at: outputRoot, includingPropertiesForKeys: [.isDirectoryKey, .contentModificationDateKey], options: [.skipsHiddenFiles]) else { return nil }
+        var directories = [outputRoot]
+        guard let enumerator = fm.enumerator(at: outputRoot, includingPropertiesForKeys: [.isDirectoryKey, .contentModificationDateKey], options: [.skipsHiddenFiles]) else { return discoverAudioTracks(in: outputRoot).isEmpty ? nil : outputRoot }
         for case let url as URL in enumerator {
+            directories.append(url)
+        }
+        for url in directories {
             guard let values = try? url.resourceValues(forKeys: [.isDirectoryKey, .contentModificationDateKey]), values.isDirectory == true else { continue }
             let tracks = discoverAudioTracks(in: url)
             guard !tracks.isEmpty else { continue }
@@ -227,9 +249,13 @@ final class AlbumMergeService: ObservableObject {
     }
 
     private func probeTags(_ url: URL, using executable: String) async -> [String: String] {
-        let result = await runProcess(executable: executable, arguments: ["-v", "error", "-show_entries", "format_tags=artist,album,album_artist,date,year", "-of", "json", url.path])
+        let result = await runProcess(executable: executable, arguments: Self.tagProbeArguments(for: url))
         guard result.status == 0, let data = result.output.data(using: .utf8), let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any], let format = object["format"] as? [String: Any], let rawTags = format["tags"] as? [String: String] else { return [:] }
         return Dictionary(uniqueKeysWithValues: rawTags.map { ($0.key.lowercased(), $0.value) })
+    }
+
+    static func tagProbeArguments(for url: URL) -> [String] {
+        ["-v", "error", "-show_entries", "format_tags=artist,album,album_artist,date,year,discnumber,disc,tracknumber,track", "-of", "json", url.path]
     }
 
     private func orderedTracks(_ urls: [URL], using executable: String) async -> [URL] {

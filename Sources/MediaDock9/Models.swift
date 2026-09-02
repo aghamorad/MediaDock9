@@ -210,6 +210,17 @@ enum BrowserChoice: String, CaseIterable, Identifiable {
         case .vivaldi: return "Vivaldi"
         }
     }
+    var bundleIdentifier: String {
+        switch self {
+        case .safari: return "com.apple.Safari"
+        case .chrome: return "com.google.Chrome"
+        case .firefox: return "org.mozilla.firefox"
+        case .brave: return "com.brave.Browser"
+        case .edge: return "com.microsoft.edgemac"
+        case .chromium: return "org.chromium.Chromium"
+        case .vivaldi: return "com.vivaldi.Vivaldi"
+        }
+    }
 }
 
 enum DependencyID: String, CaseIterable, Identifiable {
