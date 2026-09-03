@@ -441,6 +441,7 @@ private struct DependencyRow: View {
 
 struct CookiesView: View {
     @EnvironmentObject private var model: AppModel
+    @State private var showAppleMusicSignIn = false
 
     var body: some View {
         ScrollView {
@@ -486,7 +487,21 @@ struct CookiesView: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
-                RetroPanel(title: "Apple Music · one-click local extraction") {
+                RetroPanel(title: "Apple Music · sign in inside MediaDock") {
+                    Text("The easy option: press the button, sign in normally in the temporary Apple Music window, and save the session. You do not need to find Chrome folders or use a cookie extension. MediaDock stores the resulting Apple Music cookies locally for Gamdl, then throws away the temporary browser session.")
+                        .font(.retro(11))
+                        .fixedSize(horizontal: false, vertical: true)
+                    HStack {
+                        Button("Sign in to Apple Music…") { showAppleMusicSignIn = true }
+                            .buttonStyle(RetroButtonStyle(prominent: true))
+                        Text("Local only · no upload")
+                            .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                            .foregroundStyle(RetroPalette.ink.opacity(0.68))
+                        Spacer()
+                    }
+                }
+
+                RetroPanel(title: "Apple Music · use an existing browser profile") {
                     Text("Sign in to music.apple.com in the browser you choose below, then press Extract. MediaDock finds its local profile and asks yt-dlp to make a protected local cookie file for future Gamdl sessions. For Chrome-family browsers, close the browser once before extracting so macOS can release its cookie database.")
                         .font(.retro(11))
                         .fixedSize(horizontal: false, vertical: true)
@@ -553,6 +568,12 @@ struct CookiesView: View {
             .padding(14)
         }
         .background(RetroPalette.desktop)
+        .sheet(isPresented: $showAppleMusicSignIn) {
+            AppleMusicCookieLoginSheet { url in
+                model.appleCookiesPath = url.path
+                model.runner.record("Apple Music cookies were saved from MediaDock's temporary local sign-in window.", kind: .success)
+            }
+        }
     }
 }
 

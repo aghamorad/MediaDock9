@@ -79,6 +79,29 @@ final class AlbumMergeServiceTests: XCTestCase {
         }
     }
 
+    func testLocalAppleMusicSessionExportUsesOnlyAppleCookies() throws {
+        let apple = try XCTUnwrap(HTTPCookie(properties: [
+            .domain: ".music.apple.com",
+            .path: "/",
+            .name: "media-user-token",
+            .value: "test-token",
+            .secure: "TRUE",
+            .expires: Date(timeIntervalSince1970: 1_800_000_000)
+        ]))
+        let unrelated = try XCTUnwrap(HTTPCookie(properties: [
+            .domain: ".example.com",
+            .path: "/",
+            .name: "unrelated",
+            .value: "do-not-export"
+        ]))
+
+        let data = try CookieImportStore.netscapeCookieExport(from: [unrelated, apple])
+        let text = String(decoding: data, as: UTF8.self)
+        XCTAssertTrue(text.hasPrefix("# Netscape HTTP Cookie File"))
+        XCTAssertTrue(text.contains("media-user-token"))
+        XCTAssertFalse(text.contains("unrelated"))
+    }
+
     @MainActor
     func testPreferenceMapsToSharedOptions() {
         let defaults = UserDefaults(suiteName: "MediaDock9Tests-\(UUID().uuidString)")!

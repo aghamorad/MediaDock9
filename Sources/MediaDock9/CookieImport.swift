@@ -4,6 +4,7 @@ enum CookieImportError: LocalizedError {
     case sourceMissing
     case sourceIsDirectory
     case unsupportedFile
+    case noAppleMusicCookies
     case destinationUnavailable(String)
 
     var errorDescription: String? {
@@ -11,6 +12,7 @@ enum CookieImportError: LocalizedError {
         case .sourceMissing: return "The selected cookie file no longer exists."
         case .sourceIsDirectory: return "Choose a cookie file, not a folder."
         case .unsupportedFile: return "Choose a Netscape/Mozilla cookie export, usually named cookies.txt."
+        case .noAppleMusicCookies: return "MediaDock could not find any Apple Music cookies in this local sign-in window. Finish signing in at music.apple.com, wait for the library page to load, then press Save session again."
         case .destinationUnavailable(let detail): return "MediaDock could not prepare its local cookie storage: \(detail)"
         }
     }
@@ -176,6 +178,49 @@ enum CookieImportStore {
         } catch {
             throw CookieImportError.destinationUnavailable(error.localizedDescription)
         }
+    }
+
+    /// Converts only Apple-owned cookies from the app's temporary WebKit sign-in
+    /// window into the Netscape format Gamdl accepts. Cookie values are written
+    /// straight to protected local storage and are never logged or displayed.
+    static func installAppleMusicCookies(from browserCookies: [HTTPCookie]) throws -> URL {
+        let contents = try netscapeCookieExport(from: browserCookies)
+        let fm = FileManager.default
+        do {
+            try fm.createDirectory(at: directoryURL, withIntermediateDirectories: true)
+            try fm.setAttributes([.posixPermissions: 0o700], ofItemAtPath: directoryURL.path)
+            let temporaryURL = directoryURL.appendingPathComponent(".apple-music-cookies-webkit-\(UUID().uuidString).tmp")
+            try? fm.removeItem(at: temporaryURL)
+            try contents.write(to: temporaryURL, options: .atomic)
+            try fm.setAttributes([.posixPermissions: 0o600], ofItemAtPath: temporaryURL.path)
+            try? fm.removeItem(at: appleMusicCookieURL)
+            try fm.moveItem(at: temporaryURL, to: appleMusicCookieURL)
+            try fm.setAttributes([.posixPermissions: 0o600], ofItemAtPath: appleMusicCookieURL.path)
+            return appleMusicCookieURL
+        } catch {
+            throw CookieImportError.destinationUnavailable(error.localizedDescription)
+        }
+    }
+
+    static func netscapeCookieExport(from browserCookies: [HTTPCookie]) throws -> Data {
+        let relevant = browserCookies.filter { cookie in
+            let domain = cookie.domain.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: "."))
+            return domain == "apple.com" || domain.hasSuffix(".apple.com")
+        }
+        guard !relevant.isEmpty else { throw CookieImportError.noAppleMusicCookies }
+
+        var lines = ["# Netscape HTTP Cookie File", "# Generated locally by MediaDock 9 from its temporary Apple Music sign-in window."]
+        for cookie in relevant.sorted(by: { ($0.domain, $0.name) < ($1.domain, $1.name) }) {
+            guard !cookie.name.contains(where: { $0 == "\t" || $0 == "\n" || $0 == "\r" }),
+                  !cookie.value.contains(where: { $0 == "\t" || $0 == "\n" || $0 == "\r" }) else { continue }
+            let rawDomain = cookie.domain.hasPrefix(".") ? cookie.domain : ".\(cookie.domain)"
+            let domain = cookie.isHTTPOnly ? "#HttpOnly_\(rawDomain)" : rawDomain
+            let includeSubdomains = rawDomain.hasPrefix(".") ? "TRUE" : "FALSE"
+            let expiry = Int(cookie.expiresDate?.timeIntervalSince1970 ?? 0)
+            lines.append([domain, includeSubdomains, cookie.path, cookie.isSecure ? "TRUE" : "FALSE", "\(expiry)", cookie.name, cookie.value].joined(separator: "\t"))
+        }
+        guard lines.count > 2 else { throw CookieImportError.noAppleMusicCookies }
+        return Data((lines.joined(separator: "\n") + "\n").utf8)
     }
 
     static func removeManagedAppleMusicCookies() throws {

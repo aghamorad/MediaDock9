@@ -132,6 +132,17 @@ enum SelfCheck {
         let tagArguments = AlbumMergeService.tagProbeArguments(for: URL(fileURLWithPath: "/tmp/01 Track.m4a"))
         check(tagArguments.joined(separator: " ").contains("discnumber") && tagArguments.joined(separator: " ").contains("tracknumber"), "Album ordering requests disc and track tags", into: &failures)
 
+        if let appleCookie = HTTPCookie(properties: [.domain: ".music.apple.com", .path: "/", .name: "media-user-token", .value: "self-check-value"]) {
+            do {
+                let export = try CookieImportStore.netscapeCookieExport(from: [appleCookie])
+                check(String(decoding: export, as: UTF8.self).contains("media-user-token"), "Local Apple Music cookie export", into: &failures)
+            } catch {
+                failures.append("Local Apple Music cookie export threw: \(error.localizedDescription)")
+            }
+        } else {
+            failures.append("Could not construct local Apple Music cookie self-test")
+        }
+
         return failures
     }
 

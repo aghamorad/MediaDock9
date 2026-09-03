@@ -8,7 +8,7 @@ So I made MediaDock 9: a small Mac app with an old-school retro interface where 
 
 MediaDock does not replace the download tools. It gives them a clearer place to live. Underneath, it uses tools such as `yt-dlp`, `spotdl`, `gamdl`, FFmpeg, Deno, pipx, and Homebrew. The app helps find, install, and update those tools, then shows you exactly what it is asking them to do. Nothing is meant to happen invisibly.
 
-Apple Music needs a little extra explanation because it uses browser sign-in sessions. MediaDock can import a `cookies.txt` file or look for the browser profile you choose, as long as you are already signed in to Apple Music there. It does not collect your password, and it does not use the sign-in session from the native Music app. The browser and the Music app are separate things here, which is one of those details that is obvious only after you have already been confused by it.
+Apple Music needs a little extra explanation because it uses browser sign-in sessions. The easiest option is now to open MediaDock’s temporary local Apple Music window, sign in normally, and save that session for Gamdl. It can also import a `cookies.txt` file or look for a browser profile you choose. It does not collect your password, upload cookies, or use the sign-in session from the native Music app. The browser and the Music app are separate things here, which is one of those details that is obvious only after you have already been confused by it.
 
 For album downloads, **One Track, One Album** can combine the tracks into one continuous file while preserving the album order. The themes are there because, honestly, a little retro colour and a few unnecessary-looking borders make this kind of tool more pleasant to use.
 
@@ -43,7 +43,7 @@ Use it only for media you are legally entitled and contractually permitted to do
 
 ## Quick start
 
-Download `MediaDock9-0.3.2-App.zip` from the [latest release](https://github.com/aghamorad/MediaDock9/releases/latest), unzip it, and move **MediaDock 9.app** to Applications.
+Download `MediaDock9-0.3.3-App.zip` from the [latest release](https://github.com/aghamorad/MediaDock9/releases/latest), unzip it, and move **MediaDock 9.app** to Applications.
 
 The app was built for Apple Silicon. Because it is an ad-hoc-signed development build rather than a notarized public release, macOS may initially decline to open it on a different Mac. You can inspect the source and build it locally instead:
 
@@ -91,7 +91,8 @@ The build script keeps compiler caches in the project. It also recognizes the sp
 | `RootView.swift` | window shell, sidebar, command-review sheet, permanent activity console |
 | `MainViews.swift` | Download, Music, Themes, Setup, Cookies, and Troubleshooting screens |
 | `AlbumMergeService.swift` | Ordered track discovery, FFmpeg merge/fallback, FFprobe verification, cancellation, and safe cleanup |
-| `CookieImport.swift` | Explicit Apple Music cookie-export import into protected local app storage |
+| `CookieImport.swift` | Apple Music cookie import and protected local session-file storage |
+| `AppleMusicCookieLogin.swift` | Temporary local Apple Music sign-in window and Netscape cookie export |
 | `RetroTheme.swift` | sparse platinum-gray controls, inset/raised borders, status lights, typography |
 | `SelfCheck.swift` | isolated checks for URL detection, quoting, and all three command builders |
 
